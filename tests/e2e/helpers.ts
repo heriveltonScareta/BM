@@ -16,6 +16,8 @@ export const USUARIOS = {
 export type Perfil = keyof typeof USUARIOS;
 
 export async function login(page: Page, perfil: Perfil, senha = SENHA) {
+  // encerra qualquer sessao anterior do contexto (troca de perfil no mesmo teste)
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(USUARIOS[perfil].email);
   await page.getByLabel("Senha").fill(senha);
