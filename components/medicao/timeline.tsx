@@ -48,7 +48,7 @@ const ICONS: Partial<Record<AuditAction, LucideIcon>> = {
   ESTORNO: ArrowRightLeft,
 };
 
-const LABELS: Partial<Record<AuditAction, string>> = {
+export const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   MEDICAO_CRIADA: "Medição criada",
   MEDICAO_ALTERADA: "Dados da medição alterados",
   MEDICAO_EXCLUIDA: "Medição excluída",
@@ -127,7 +127,9 @@ export function Timeline({ entries }: { entries: TimelineEntry[] }) {
             <span className="absolute -left-[31px] flex size-5 items-center justify-center rounded-full border bg-background">
               <Icon className="size-3" aria-hidden />
             </span>
-            <div className="text-sm font-medium">{LABELS[e.action as AuditAction] ?? e.action}</div>
+            <div className="text-sm font-medium">
+              {AUDIT_ACTION_LABELS[e.action as AuditAction] ?? e.action}
+            </div>
             {det ? <div className="text-sm text-muted-foreground">{det}</div> : null}
             <div className="text-xs text-muted-foreground tabular">
               {formatDateTime(e.createdAt)} · {e.actorLabel}
