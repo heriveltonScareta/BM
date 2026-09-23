@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./locale";
 
 export const idSchema = z.string().uuid("Identificador inválido.");
 

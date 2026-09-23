@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import { z } from "zod";
+import "./locale";
 
 /**
  * Converte texto digitado pelo usuario (ou celula de planilha) em Decimal.

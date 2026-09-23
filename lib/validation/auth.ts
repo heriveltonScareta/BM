@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./locale";
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email("Informe um e-mail válido."),
