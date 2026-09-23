@@ -20,7 +20,7 @@ async function criarMedicao(page: Page, frs: string) {
 test.describe("medições", () => {
   test("lista seedada com filtros por status e busca por FRS", async ({ page }) => {
     await login(page, "operacional");
-    await page.goto("/medicoes");
+    await page.goto("/medicoes?sort=number&order=asc");
     const tabela = page.getByRole("table", { name: "Lista de boletins de medição" });
     await expect(tabela).toContainText("BM-2026-0001");
     await page.getByRole("combobox", { name: "Status" }).click();
@@ -167,7 +167,7 @@ test.describe("medições", () => {
     await login(page, "financeiro");
     await page.goto("/medicoes/nova");
     await expect(page.getByRole("heading", { name: "Sem permissão" })).toBeVisible();
-    await page.goto("/medicoes");
+    await page.goto("/medicoes?sort=number&order=asc");
     const tabela = page.getByRole("table", { name: "Lista de boletins de medição" });
     await expect(tabela).toContainText("BM-2026-0001");
     await expect(tabela).not.toContainText("Rascunho");
