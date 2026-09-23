@@ -568,6 +568,7 @@ export async function transitionMeasurement(
   const transition = assertTransition(m.status, to, user.role);
   await checkGuards(transition.guards ?? [], m.id, options);
 
+  const estorno = m.status === MeasurementStatus.FATURADO && to === MeasurementStatus.EM_ELABORACAO;
   return prisma.$transaction(async (tx) => {
     const after = await tx.measurement.update({
       where: { id },
@@ -576,10 +577,25 @@ export async function transitionMeasurement(
         canceledAt: to === MeasurementStatus.CANCELADO ? new Date() : m.canceledAt,
       },
     });
+    if (estorno) {
+      // a NF faturada deixa de valer para esta medicao; o registro permanece no historico
+      const invoice = await tx.invoice.findUnique({ where: { measurementId: id } });
+      if (invoice) {
+        await tx.invoice.update({ where: { id: invoice.id }, data: { status: "CANCELADA" } });
+        await audit(tx, {
+          entity: "Invoice",
+          entityId: invoice.id,
+          action: "NF_ALTERADA",
+          actor,
+          before: { measurementId: id, status: invoice.status },
+          after: { measurementId: id, status: "CANCELADA", motivo: "Estorno da medição" },
+        });
+      }
+    }
     await audit(tx, {
       entity: "Measurement",
       entityId: id,
-      action: "STATUS_ALTERADO",
+      action: estorno ? "ESTORNO" : "STATUS_ALTERADO",
       actor,
       before: { status: m.status },
       after: { status: to, ...(options.reason ? { motivo: options.reason } : {}) },
@@ -612,13 +628,32 @@ async function checkGuards(
           );
         break;
       }
+      case "TEM_ASSINATURA": {
+        const m = await prisma.measurement.findUniqueOrThrow({
+          where: { id: measurementId },
+          select: { currentVersion: true },
+        });
+        const signature = await prisma.signature.findFirst({
+          where: { measurementId, version: { version: m.currentVersion } },
+        });
+        if (!signature)
+          throw new TransitionError(
+            "Não é possível liberar para faturamento sem a assinatura eletrônica do cliente na versão vigente.",
+          );
+        break;
+      }
+      case "TEM_NF_COMPLETA": {
+        const invoice = await prisma.invoice.findUnique({ where: { measurementId } });
+        if (!invoice || !invoice.number || !invoice.issueDate || invoice.amount.lte(0)) {
+          throw new TransitionError(
+            "Anexe a nota fiscal com número, data de emissão e valor antes de faturar.",
+          );
+        }
+        break;
+      }
       case "TEM_APROVADOR":
-      case "TEM_ASSINATURA":
-      case "TEM_NF_COMPLETA":
-        // Estas transicoes exigem os fluxos dedicados (envio, assinatura, faturamento).
-        throw new TransitionError(
-          "Esta etapa é executada pelo fluxo próprio (envio, assinatura ou faturamento).",
-        );
+        // O envio ao cliente tem fluxo proprio (versao, PDF, token, e-mail).
+        throw new TransitionError('O envio ao cliente é feito pelo botão "Enviar ao cliente".');
     }
   }
 }

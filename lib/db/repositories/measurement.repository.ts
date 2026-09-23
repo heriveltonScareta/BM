@@ -18,6 +18,7 @@ export const measurementListSelect = {
   updatedAt: true,
   client: { select: { id: true, code: true, tradeName: true } },
   contract: { select: { id: true, code: true, name: true, unit: true } },
+  invoice: { select: { number: true, status: true, issueDate: true, amount: true, sentAt: true } },
 } satisfies Prisma.MeasurementSelect;
 
 export type MeasurementListRow = Prisma.MeasurementGetPayload<{

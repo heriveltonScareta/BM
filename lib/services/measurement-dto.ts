@@ -99,3 +99,34 @@ export function toMeasurementDto(m: MeasurementDetail): MeasurementDto {
     },
   };
 }
+
+import type { MeasurementListRow } from "@/lib/db/repositories/measurement.repository";
+
+/** Linha de listagem serializada (datas ISO/AAAA-MM-DD, Decimal -> string) para as tabelas. */
+export function toMeasurementListRow(m: MeasurementListRow) {
+  return {
+    id: m.id,
+    number: m.number,
+    competence: m.competence,
+    startDate: dateToDateOnly(m.startDate),
+    endDate: dateToDateOnly(m.endDate),
+    issueDate: dateToDateOnly(m.issueDate),
+    frs: m.frs,
+    purchaseOrder: m.purchaseOrder,
+    status: m.status,
+    currentVersion: m.currentVersion,
+    totalAmount: round2(m.totalAmount.toString()).toFixed(2),
+    updatedAt: m.updatedAt.toISOString(),
+    client: m.client,
+    contract: m.contract,
+    invoice: m.invoice
+      ? {
+          number: m.invoice.number,
+          status: m.invoice.status,
+          issueDate: dateToDateOnly(m.invoice.issueDate),
+          amount: round2(m.invoice.amount.toString()).toFixed(2),
+          sentAt: m.invoice.sentAt ? dateToDateOnly(m.invoice.sentAt) : null,
+        }
+      : null,
+  };
+}
