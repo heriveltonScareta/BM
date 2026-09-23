@@ -52,6 +52,7 @@ function withScope(
 export async function listMeasurements(db: Db, scope: Scope, query: MeasurementListQuery) {
   const filters: Prisma.MeasurementWhereInput = {};
   if (query.status) filters.status = query.status;
+  else if (query.statuses?.length) filters.status = { in: query.statuses };
   if (query.clientId) filters.clientId = query.clientId;
   if (query.competence) filters.competence = query.competence;
   if (query.q) {

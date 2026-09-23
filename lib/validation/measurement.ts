@@ -120,6 +120,18 @@ export const measurementListQuerySchema = z.object({
   sort: z.enum(MEASUREMENT_SORT_FIELDS).default("updatedAt"),
   order: z.enum(["asc", "desc"]).default("desc"),
   status: z.enum(MeasurementStatus).optional(),
+  /** Lista separada por virgula (ex.: fila de aprovacoes). Ignora valores invalidos. */
+  statuses: z
+    .string()
+    .optional()
+    .transform((v) => {
+      const valid = new Set<string>(Object.values(MeasurementStatus));
+      const list = (v ?? "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter((x) => valid.has(x)) as MeasurementStatus[];
+      return list.length ? list : undefined;
+    }),
   clientId: idSchema.optional(),
   competence: z
     .string()
@@ -129,7 +141,8 @@ export const measurementListQuerySchema = z.object({
 });
 export type MeasurementListQuery = Omit<
   z.output<typeof measurementListQuerySchema>,
-  "competence"
+  "competence" | "statuses"
 > & {
   competence?: string;
+  statuses?: MeasurementStatus[];
 };
