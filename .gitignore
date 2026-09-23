@@ -48,3 +48,6 @@ next-env.d.ts
 /lib/db/generated
 /test-results
 /playwright-report
+
+# gerado automaticamente pelo next dev (o conteudo util ja esta no CLAUDE.md)
+AGENTS.md
