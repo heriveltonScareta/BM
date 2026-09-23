@@ -38,18 +38,20 @@ lib/auth        options, session, rbac (can), scope, password
 lib/db          prisma.ts (singleton), repositories/, generated/ (não editar)
 lib/services    regras de negócio: status-machine, calculation, audit, measurement-number, snapshot,
                 measurement (criação, itens, transições, timeline), measurement-dto, client, auth,
-                approval (envio, portal por token, decisão, assinatura, versões), document, version-compare
+                approval (envio, portal por token, decisão, assinatura, versões), document (upload,
+                download por escopo, listagem), billing (liberar, NF, faturar), upload-validation
 lib/validation  schemas Zod compartilhados (cnpj, money, common, auth, client, measurement, locale)
 lib/email       adapter (dev grava em /tmp/bm-emails; smtp por env)
 lib/pdf         boletim.tsx (react-pdf), data.ts (BoletimData a partir da medição ou de um snapshot),
                 render.ts, extenso.ts, fonts/ (Inter, OFL)
 lib/excel       columns.ts (contrato da planilha), template.ts, import.ts (parser + validação), export.ts
 lib/storage     adapter (local em ./storage; s3 esqueleto), file-type.ts (magic bytes)
-prisma/         schema, migrations, seed.ts       tests/  unit, integration, e2e, setup, fixtures
+prisma/         schema, migrations, seed.mts      tests/  unit, integration, e2e, setup, fixtures
 ```
 
 ## Convenções
 
+- **ESM:** o projeto é `"type": "module"`; sem `require`, sem `__dirname` (usar `import.meta.dirname`).
 - **Idioma:** código e banco em inglês; UI, mensagens de erro, commits e docs em pt-BR.
 - **Commits:** pequenos e atômicos, `tipo(escopo): descrição` (`feat(medicao): calculo de totais`).
 - **Arquitetura:** rotas/componentes **nunca** importam Prisma (regra ESLint `no-restricted-imports`).

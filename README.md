@@ -4,7 +4,8 @@ Sistema web para uma prestadora de serviços (mineração, construção pesada e
 o ciclo **prestação → medição → aprovação do cliente → assinatura → liberação → nota fiscal →
 arquivamento**, substituindo planilhas e e-mails soltos.
 
-Estado atual: **Fase 0 (fundação)** concluída. Veja `PLANO.md` para as fases e `DECISOES.md` para
+Estado atual: **Fases 0 a 5** concluídas (fundação, clientes, medição, Excel/PDF, aprovação e
+assinatura, faturamento e documentos). Veja `PLANO.md` para as fases e `DECISOES.md` para
 as decisões técnicas.
 
 ## Como rodar em 5 passos
@@ -43,7 +44,8 @@ Senha única: **`Demo@2026`** (definida por `SEED_PASSWORD` no `.env`). Não use
 | Cliente       | `cliente@demo.local`     | somente as medições do seu cliente (Mineração Serra Azul)      |
 
 O seed cria 3 clientes com contratos e aprovadores, 12 medições em todos os status (4 competências),
-versões, assinaturas e 2 notas fiscais.
+versões com PDF, boletins assinados, 2 notas fiscais (PDF + XML) e a trilha de auditoria. Os arquivos
+ficam em `./storage` (fora de `/public`; gitignored).
 
 ## Variáveis de ambiente
 
@@ -67,18 +69,18 @@ Nenhum serviço externo pago é necessário. O sistema funciona 100% sem SMTP.
 
 ## Comandos
 
-| Comando                                                 | Descrição                                                                                         |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `npm run dev`                                           | servidor de desenvolvimento                                                                       |
-| `npm run build` / `npm start`                           | build e execução de produção                                                                      |
-| `npm run verify`                                        | typecheck + lint + testes + build (definição de pronto)                                           |
-| `npm run typecheck` / `npm run lint` / `npm run format` | qualidade                                                                                         |
-| `npm test`                                              | Vitest: unidade e integração (usa `bm_test`)                                                      |
-| `npm run test:e2e`                                      | Playwright (banco seedado; sobe o `dev` sozinho). Primeira vez: `npx playwright install chromium` |
-| `npm run db:migrate`                                    | aplica migrations (`prisma migrate deploy`)                                                       |
-| `npm run db:migrate:dev`                                | cria migration em desenvolvimento                                                                 |
-| `npm run db:seed`                                       | popula dados demo (`SEED_RESET=1 npm run db:seed` recria)                                         |
-| `npm run db:reset`                                      | zera o banco, reaplica migrations e roda o seed                                                   |
+| Comando                                                 | Descrição                                                                                                              |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                           | servidor de desenvolvimento                                                                                            |
+| `npm run build` / `npm start`                           | build e execução de produção                                                                                           |
+| `npm run verify`                                        | typecheck + lint + testes + build (definição de pronto)                                                                |
+| `npm run typecheck` / `npm run lint` / `npm run format` | qualidade                                                                                                              |
+| `npm test`                                              | Vitest: unidade e integração (usa `bm_test`)                                                                           |
+| `npm run test:e2e`                                      | Playwright: **recria o seed** (`SEED_RESET=1`) e sobe o `dev` sozinho. Primeira vez: `npx playwright install chromium` |
+| `npm run db:migrate`                                    | aplica migrations (`prisma migrate deploy`)                                                                            |
+| `npm run db:migrate:dev`                                | cria migration em desenvolvimento                                                                                      |
+| `npm run db:seed`                                       | popula dados demo (`SEED_RESET=1 npm run db:seed` recria)                                                              |
+| `npm run db:reset`                                      | zera o banco, reaplica migrations e roda o seed                                                                        |
 
 ## Estrutura
 
