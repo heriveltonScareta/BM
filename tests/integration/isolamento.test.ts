@@ -42,6 +42,10 @@ import * as faturarRoute from "@/app/api/medicoes/[id]/faturar/route";
 import * as docsMedicaoRoute from "@/app/api/medicoes/[id]/documentos/route";
 import * as docRemoveRoute from "@/app/api/documentos/[id]/route";
 import * as docsListaRoute from "@/app/api/documentos/route";
+import * as relatoriosRoute from "@/app/api/relatorios/route";
+import * as exportarRelRoute from "@/app/api/relatorios/exportar/route";
+import * as buscaRoute from "@/app/api/busca/route";
+import * as dashboardRoute from "@/app/api/dashboard/route";
 
 type Handler = (
   req: Request,
@@ -50,6 +54,7 @@ type Handler = (
 
 describe("isolamento por cliente — Cliente A × recursos do Cliente B", () => {
   let clienteA: SessionUser;
+  let a: Awaited<ReturnType<typeof createClientFixture>>;
   let b: Awaited<ReturnType<typeof createClientFixture>>;
   let medB = "";
   let itemB = "";
@@ -66,7 +71,7 @@ describe("isolamento por cliente — Cliente A × recursos do Cliente B", () => 
         return { id: "1" };
       },
     });
-    const a = await createClientFixture("AAA", CNPJ_A);
+    a = await createClientFixture("AAA", CNPJ_A);
     b = await createClientFixture("BBB", CNPJ_B);
     const users = await createTestUsers(a.client.id);
     clienteA = users.cliente;
@@ -371,6 +376,44 @@ describe("isolamento por cliente — Cliente A × recursos do Cliente B", () => 
       path: `/api/documentos?clientId=${b.client.id}`,
     });
     expect((docs.json as { total: number }).total).toBe(0);
+  });
+
+  it("relatórios, busca e dashboard (Fase 6) não vazam registros de B", async () => {
+    const numB = (await prisma.measurement.findUniqueOrThrow({ where: { id: medB } })).number;
+    // relatorios: CLIENTE nao tem a acao (403); mesmo para quem tem, o clientId de B nao vaza
+    expect(
+      (await callRoute(relatoriosRoute.GET, { path: `/api/relatorios?clientId=${b.client.id}` }))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await callRoute(exportarRelRoute.GET, {
+          path: `/api/relatorios/exportar?clientId=${b.client.id}`,
+        })
+      ).status,
+    ).toBe(403);
+    const busca = await callRoute(buscaRoute.GET, { path: `/api/busca?q=${numB}` });
+    expect(busca.status).toBe(200);
+    expect(busca.json).toMatchObject({
+      medicoes: [],
+      clientes: [],
+      contratos: [],
+      notasFiscais: [],
+    });
+    const buscaB = await callRoute(buscaRoute.GET, { path: `/api/busca?q=BBB` });
+    expect(buscaB.json).toMatchObject({ medicoes: [], clientes: [], contratos: [] });
+    const dash = await callRoute(dashboardRoute.GET, { path: "/api/dashboard" });
+    expect(dash.status).toBe(200);
+    const d = dash.json as {
+      valorPorCliente: Array<{ clientId: string }>;
+      pendencias: Array<{ id: string }>;
+      atividade: Array<{ measurementId: string | null }>;
+      porStatus: Array<{ quantidade: number }>;
+    };
+    expect(d.valorPorCliente.map((c) => c.clientId)).toEqual([a.client.id]);
+    expect(d.pendencias.some((p) => p.id === medB)).toBe(false);
+    expect(d.atividade.some((x) => x.measurementId === medB)).toBe(false);
+    expect(d.porStatus.reduce((n, s) => n + s.quantidade, 0)).toBe(1);
   });
 
   it("financeiro e cliente não acessam rotas administrativas de envio; portal rejeita token malformado", async () => {
