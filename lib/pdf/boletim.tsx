@@ -156,14 +156,14 @@ const s = StyleSheet.create({
 });
 
 const W = {
-  code: "11%",
-  label: "27%",
-  desc: "20%",
+  code: "10%",
+  label: "25%",
+  desc: "17%",
   qty: "9%",
   unit: "7%",
-  dh: "8%",
-  price: "9%",
-  total: "9%",
+  dh: "10%",
+  price: "11%",
+  total: "11%",
 } as const;
 
 function ItemsTable({
@@ -215,7 +215,7 @@ function ItemsTable({
           </View>
         ))}
         <View style={s.totalRow} wrap={false}>
-          <Text style={[s.td, { width: "91%", textAlign: "right", fontWeight: 600 }]}>
+          <Text style={[s.td, { width: "89%", textAlign: "right", fontWeight: 600 }]}>
             Total {title.toLowerCase()}
           </Text>
           <Text style={[s.td, s.right, { width: W.total, fontWeight: 700 }]}>
