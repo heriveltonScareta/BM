@@ -14,6 +14,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -48,6 +49,8 @@ interface DataTableProps<T> {
   /** Torna a linha clicavel (navega para a URL). */
   getRowHref?: (row: T) => string;
   emptyState: React.ReactNode;
+  /** Linha(s) de rodape (ex.: totais); recebe `<TableRow>`s. */
+  footer?: React.ReactNode;
   caption?: string;
   className?: string;
 }
@@ -63,6 +66,7 @@ export function DataTable<T>({
   renderCard,
   getRowHref,
   emptyState,
+  footer,
   caption,
   className,
 }: DataTableProps<T>) {
@@ -103,7 +107,7 @@ export function DataTable<T>({
       ) : null}
       <div
         className={cn(
-          "overflow-hidden rounded-md border bg-card transition-opacity",
+          "overflow-x-auto rounded-md border bg-card transition-opacity",
           renderCard && "hidden md:block",
           isPending && "opacity-60",
         )}
@@ -188,6 +192,7 @@ export function DataTable<T>({
               </TableRow>
             ))}
           </TableBody>
+          {footer ? <TableFooter>{footer}</TableFooter> : null}
         </Table>
       </div>
       {pagination ? <DataTablePaginationBar pagination={pagination} /> : null}
