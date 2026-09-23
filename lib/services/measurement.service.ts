@@ -627,3 +627,85 @@ async function checkGuards(
 export function actorRole(user: SessionUser): Role {
   return user.role;
 }
+
+// ---------------------------------------------------------------------------
+// importacao de planilha (Secao 10) — tudo ou nada
+// ---------------------------------------------------------------------------
+
+export type ImportMode = "substituir" | "adicionar";
+
+export interface ImportSummary {
+  labor: number;
+  equipment: number;
+  mode: ImportMode;
+  totals: MeasurementTotals;
+}
+
+/**
+ * Grava os itens ja validados pelo parser. `substituir` apaga os itens existentes das abas
+ * presentes no arquivo; `adicionar` inclui apos os existentes. Transacao unica.
+ */
+export async function importItems(
+  scope: Scope,
+  measurementId: string,
+  parsed: {
+    laborItems: LaborItemData[];
+    equipmentItems: EquipmentItemData[];
+    sheets: { labor: boolean; equipment: boolean };
+  },
+  mode: ImportMode,
+  actor: AuditActor,
+): Promise<ImportSummary> {
+  const m = await requireMeasurement(scope, measurementId);
+  assertEditable(m.status);
+  return prisma.$transaction(async (tx) => {
+    const before = {
+      labor: await tx.laborItem.count({ where: { measurementId } }),
+      equipment: await tx.equipmentItem.count({ where: { measurementId } }),
+    };
+    if (mode === "substituir") {
+      if (parsed.sheets.labor) await tx.laborItem.deleteMany({ where: { measurementId } });
+      if (parsed.sheets.equipment) await tx.equipmentItem.deleteMany({ where: { measurementId } });
+    }
+    const laborStart = mode === "substituir" && parsed.sheets.labor ? 0 : before.labor;
+    const equipmentStart = mode === "substituir" && parsed.sheets.equipment ? 0 : before.equipment;
+    if (parsed.laborItems.length) {
+      await tx.laborItem.createMany({
+        data: parsed.laborItems.map((d, i) => ({
+          ...itemRecord("mao-de-obra", d, laborStart + i),
+          role: d.role,
+          measurementId,
+        })),
+      });
+    }
+    if (parsed.equipmentItems.length) {
+      await tx.equipmentItem.createMany({
+        data: parsed.equipmentItems.map((d, i) => ({
+          ...itemRecord("equipamentos", d, equipmentStart + i),
+          name: d.name,
+          measurementId,
+        })),
+      });
+    }
+    const totals = await recalculateTotals(tx, measurementId);
+    await audit(tx, {
+      entity: "Measurement",
+      entityId: measurementId,
+      action: "ITENS_IMPORTADOS",
+      actor,
+      before: { maoDeObra: before.labor, equipamentos: before.equipment },
+      after: {
+        modo: mode,
+        maoDeObra: parsed.laborItems.length,
+        equipamentos: parsed.equipmentItems.length,
+        ...totals,
+      },
+    });
+    return {
+      labor: parsed.laborItems.length,
+      equipment: parsed.equipmentItems.length,
+      mode,
+      totals,
+    };
+  });
+}
