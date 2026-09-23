@@ -1,0 +1,8 @@
+node_modules
+.next
+lib/db/generated
+prisma/migrations
+package-lock.json
+storage
+test-results
+playwright-report
