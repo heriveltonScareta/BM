@@ -9,8 +9,24 @@ function toTz(date: Date | string | number): TZDate {
   return new TZDate(date instanceof Date ? date : new Date(date), TIMEZONE);
 }
 
-/** dd/MM/aaaa */
-export function formatDate(date: Date | string | number | null | undefined): string {
+/**
+ * dd/MM/aaaa para DATAS PURAS (colunas @db.Date ou strings "AAAA-MM-DD").
+ * Essas datas sao armazenadas a meia-noite UTC e NAO devem ser convertidas de fuso,
+ * senao exibem o dia anterior em America/Sao_Paulo.
+ */
+export function formatDate(date: Date | string | null | undefined): string {
+  if (date === null || date === undefined || date === "") return "";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  const d = date instanceof Date ? date : new Date(date);
+  if (!isValid(d)) return "";
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+}
+
+/** dd/MM/aaaa de um INSTANTE (timestamp), convertido para America/Sao_Paulo. */
+export function formatTimestampAsDate(date: Date | string | number | null | undefined): string {
   if (date === null || date === undefined) return "";
   const d = toTz(date);
   return isValid(d) ? format(d, "dd/MM/yyyy", { locale: ptBR }) : "";
