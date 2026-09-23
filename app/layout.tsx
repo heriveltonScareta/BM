@@ -15,7 +15,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen font-sans">
         {children}
-        <Toaster position="top-right" richColors closeButton />
+        <Toaster position="bottom-right" richColors closeButton />
       </body>
     </html>
   );

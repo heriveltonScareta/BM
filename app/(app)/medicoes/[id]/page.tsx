@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, CalendarRange, FileText, User } from "lucide-react";
+import { Building2, CalendarRange, FileDown, FileText, Hash } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { EstadoSemPermissao } from "@/components/estados";
 import { StatusBadge } from "@/components/medicao/status-badge";
@@ -60,6 +61,11 @@ export default async function MedicaoPage({ params }: { params: Promise<{ id: st
             {medicao.currentVersion > 0 ? (
               <span className="text-xs text-muted-foreground">v{medicao.currentVersion}</span>
             ) : null}
+            <Button asChild variant="outline" size="sm">
+              <a href={`/api/medicoes/${medicao.id}/pdf?inline=1`} target="_blank" rel="noopener">
+                <FileDown aria-hidden /> Gerar PDF
+              </a>
+            </Button>
             <MedicaoAcoes medicaoId={medicao.id} status={medicao.status} permitidas={permitidas} />
           </>
         }
@@ -103,7 +109,7 @@ export default async function MedicaoPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
         <div className="flex items-start gap-2">
-          <User className="mt-0.5 size-4 text-muted-foreground" aria-hidden />
+          <Hash className="mt-0.5 size-4 text-muted-foreground" aria-hidden />
           <div>
             <dt className="text-xs text-muted-foreground">FRS · PC</dt>
             <dd>{[medicao.frs, medicao.purchaseOrder].filter(Boolean).join(" · ") || "—"}</dd>
@@ -111,6 +117,7 @@ export default async function MedicaoPage({ params }: { params: Promise<{ id: st
         </div>
       </dl>
       <MedicaoWorkspace
+        key={medicao.updatedAt}
         medicao={medicao}
         editable={editable}
         contratos={contratos}

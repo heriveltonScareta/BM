@@ -107,8 +107,8 @@ export function NovaMedicaoForm() {
         json: values,
       });
       toast.success(`Medição ${m.number} criada.`);
+      // push para pagina dinamica ja carrega dados frescos; um refresh extra remontaria o workspace
       router.push(`/medicoes/${m.id}`);
-      router.refresh();
     } catch (e) {
       if (e instanceof ApiClientError) {
         applyApiErrors(e, form.setError);

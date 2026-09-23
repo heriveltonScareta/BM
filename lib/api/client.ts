@@ -19,6 +19,7 @@ export class ApiClientError extends Error {
 export async function api<T>(input: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const headers = new Headers(init?.headers);
   let body = init?.body;
+  // FormData: o navegador define o content-type (multipart com boundary)
   if (init?.json !== undefined) {
     headers.set("content-type", "application/json");
     body = JSON.stringify(init.json);

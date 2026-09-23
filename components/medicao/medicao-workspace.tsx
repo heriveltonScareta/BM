@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ResumoFinanceiro } from "@/components/medicao/resumo-financeiro";
@@ -10,6 +12,7 @@ import { Timeline, type TimelineEntry } from "@/components/medicao/timeline";
 import type { MeasurementDto } from "@/lib/services/measurement-dto";
 import type { MeasurementTotals } from "@/lib/services/measurement.service";
 import { useUrlState } from "@/hooks/use-url-state";
+import { ExportarButton, ImportarDialog } from "@/components/medicao/importar-dialog";
 
 export function MedicaoWorkspace({
   medicao,
@@ -36,6 +39,18 @@ export function MedicaoWorkspace({
   const [equipmentCount, setEquipmentCount] = useState(medicao.equipmentItems.length);
   const { searchParams, setParams } = useUrlState();
   const aba = searchParams.get("aba") ?? "mao-de-obra";
+  const [importar, setImportar] = useState(false);
+
+  const ferramentas = (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      {editable ? (
+        <Button size="sm" variant="outline" onClick={() => setImportar(true)}>
+          <Upload aria-hidden /> Importar planilha
+        </Button>
+      ) : null}
+      <ExportarButton medicaoId={medicao.id} numero={medicao.number} />
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -58,6 +73,7 @@ export function MedicaoWorkspace({
           <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
         <TabsContent value="mao-de-obra" className="mt-3">
+          {ferramentas}
           <ItensGrid
             medicaoId={medicao.id}
             kind="mao-de-obra"
@@ -68,6 +84,7 @@ export function MedicaoWorkspace({
           />
         </TabsContent>
         <TabsContent value="equipamentos" className="mt-3">
+          {ferramentas}
           <ItensGrid
             medicaoId={medicao.id}
             kind="equipamentos"
@@ -88,6 +105,14 @@ export function MedicaoWorkspace({
           <Timeline entries={timeline} />
         </TabsContent>
       </Tabs>
+      {editable ? (
+        <ImportarDialog
+          medicaoId={medicao.id}
+          open={importar}
+          onClose={() => setImportar(false)}
+          onImported={(summary) => setTotals(summary.totals)}
+        />
+      ) : null}
     </div>
   );
 }

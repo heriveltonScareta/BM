@@ -64,7 +64,6 @@ export function ClienteForm({ cliente }: ClienteFormProps) {
         : await api<{ id: string }>("/api/clientes", { method: "POST", json: values });
       toast.success(cliente ? "Cliente atualizado." : "Cliente cadastrado.");
       router.push(`/clientes/${saved.id}`);
-      router.refresh();
     } catch (e) {
       if (e instanceof ApiClientError) {
         applyApiErrors(e, form.setError, { cnpj: /CNPJ/i, code: /código/i });
