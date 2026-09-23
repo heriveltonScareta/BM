@@ -32,11 +32,13 @@ Playwright · ESLint 9 + Prettier.
 ```
 app/(auth)      login, recuperar-senha            app/(app)      área interna (menu lateral)
 app/(portal)    portal do cliente por token       app/api        route handlers (sempre withApi)
+                (/portal/aprovacao/[token]; rotas /api/portal/[token]/* com portalGuard)
 components/ui   shadcn                            components/*   layout, estados, medicao, auth…
 lib/auth        options, session, rbac (can), scope, password
 lib/db          prisma.ts (singleton), repositories/, generated/ (não editar)
 lib/services    regras de negócio: status-machine, calculation, audit, measurement-number, snapshot,
-                measurement (criação, itens, transições, timeline), measurement-dto, client, auth…
+                measurement (criação, itens, transições, timeline), measurement-dto, client, auth,
+                approval (envio, portal por token, decisão, assinatura, versões), document, version-compare
 lib/validation  schemas Zod compartilhados (cnpj, money, common, auth, client, measurement, locale)
 lib/email       adapter (dev grava em /tmp/bm-emails; smtp por env)
 lib/pdf         boletim.tsx (react-pdf), data.ts (BoletimData a partir da medição ou de um snapshot),
@@ -64,6 +66,11 @@ prisma/         schema, migrations, seed.ts       tests/  unit, integration, e2e
 - **Uploads:** validar extensão, tipo real (`detectFileType`) e tamanho antes de qualquer parse.
 - **PDF:** sempre por `renderBoletimPdf(BoletimData)`; a Fase 4 alimenta com o snapshot da versão
   (`boletimDataFromSnapshot`) e o bloco de evidências da assinatura. Nunca a palavra "certificado".
+- **Portal:** rotas públicas só por token (`portalGuard`: formato + rate limit por IP e por token);
+  nunca listam medições nem expõem outro cliente. Transições do cliente usam o ator `CLIENTE`.
+- **Documentos:** gravar via `storeDocument` (chave UUID); baixar só por `/api/documentos/[id]/download`
+  (escopo) ou `/api/portal/[token]/pdf`. Nunca servir `./storage` como estático.
+- **Novas rotas:** acrescentar ao `tests/integration/isolamento.test.ts` (Cliente A × Cliente B).
 - **API:** todo route handler usa `withApi()` e começa com `requireSession()`/`requireAction()`.
   Erros: lançar `AppError`/`NotFoundError`/`ForbiddenError`/`ValidationError`/`TransitionError`.
 - **Validação:** um schema Zod em `lib/validation`, usado no formulário (client) e na rota (server).
