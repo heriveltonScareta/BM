@@ -39,12 +39,15 @@ lib/db          prisma.ts (singleton), repositories/, generated/ (não editar)
 lib/services    regras de negócio: status-machine, calculation, audit, measurement-number, snapshot,
                 measurement (criação, itens, transições, timeline), measurement-dto, client, auth,
                 approval (envio, portal por token, decisão, assinatura, versões), document (upload,
-                download por escopo, listagem), billing (liberar, NF, faturar), upload-validation
+                download por escopo, listagem), billing (liberar, NF, faturar), upload-validation,
+                report (dashboard, relatórios com totais do conjunto filtrado, busca global, resumo
+                do cliente), report-filters (texto dos filtros nas exportações)
 lib/validation  schemas Zod compartilhados (cnpj, money, common, auth, client, measurement, locale)
 lib/email       adapter (dev grava em /tmp/bm-emails; smtp por env)
 lib/pdf         boletim.tsx (react-pdf), data.ts (BoletimData a partir da medição ou de um snapshot),
-                render.ts, extenso.ts, fonts/ (Inter, OFL)
-lib/excel       columns.ts (contrato da planilha), template.ts, import.ts (parser + validação), export.ts
+                render.ts, extenso.ts, relatorio.tsx (relatórios em paisagem), fonts/ (Inter, OFL)
+lib/excel       columns.ts (contrato da planilha), template.ts, import.ts (parser + validação), export.ts,
+                relatorio.ts (exportação dos relatórios)
 lib/storage     adapter (local em ./storage; s3 esqueleto), file-type.ts (magic bytes)
 prisma/         schema, migrations, seed.mts      tests/  unit, integration, e2e, setup, fixtures
 ```
@@ -61,6 +64,11 @@ prisma/         schema, migrations, seed.mts      tests/  unit, integration, e2e
   API dentro de server components.
 - **Listagens:** estado (q, status, sort, order, page, pageSize) na URL via `useUrlState`; tabela com
   `components/tabelas/data-table.tsx` (`renderCard` obrigatório para o celular).
+- **Gráficos:** só `components/graficos/grafico-barras.tsx` (Recharts, uma série, uma medida). Magnitude
+  em uma só cor; status nas cores semânticas com rótulo visível; sempre tooltip e botão "Tabela".
+  Nunca eixo duplo, nunca pizza. Valores em R$ só para quem tem `relatorios:financeiro` (e o Cliente).
+- **Relatórios/dashboard:** agregar no servidor (`report.service.ts`); totais e cards do conjunto
+  filtrado inteiro. Exportações usam os mesmos filtros da URL (`/api/relatorios/exportar`).
 - **Grade de itens:** `components/medicao/itens-grid.tsx`. Toda operação (criar, editar, duplicar,
   excluir, reordenar) é uma chamada à API que devolve `{ item, totals }`; a UI só exibe prévia.
 - **Auditoria de entidades filhas:** gravar `measurementId` dentro de `before/after` para a timeline

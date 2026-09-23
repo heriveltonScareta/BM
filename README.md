@@ -4,8 +4,8 @@ Sistema web para uma prestadora de serviços (mineração, construção pesada e
 o ciclo **prestação → medição → aprovação do cliente → assinatura → liberação → nota fiscal →
 arquivamento**, substituindo planilhas e e-mails soltos.
 
-Estado atual: **Fases 0 a 5** concluídas (fundação, clientes, medição, Excel/PDF, aprovação e
-assinatura, faturamento e documentos). Veja `PLANO.md` para as fases e `DECISOES.md` para
+Estado atual: **Fases 0 a 6** concluídas (fundação, clientes, medição, Excel/PDF, aprovação e
+assinatura, faturamento e documentos, dashboard, relatórios e busca global). Veja `PLANO.md` para as fases e `DECISOES.md` para
 as decisões técnicas.
 
 ## Como rodar em 5 passos
@@ -92,6 +92,10 @@ Consulte `CLAUDE.md` (estrutura de pastas, convenções e regras de negócio ine
   tamanho/linhas e upload restrito a usuários autenticados. Ver `DECISOES.md`.
 - Provedor de storage S3 tem só a interface; a implementação fica fora do MVP.
 - Rate limit é em memória (uma instância). Para múltiplas instâncias, trocar por Redis.
+- Configurações é somente leitura: dados da prestadora vêm das variáveis `COMPANY_*`; não há tela
+  de gestão de usuários (os quatro perfis vêm do seed) nem visualização geral da auditoria (o
+  histórico de cada medição está na aba Histórico; o dashboard mostra a atividade recente).
+- Exportação de relatórios limitada a 5.000 linhas por arquivo.
 - Assinatura é **eletrônica simples com registro de evidências** (MP 2.200-2/2001, art. 10, §2º),
   não assinatura digital ICP-Brasil.
 - Fora de escopo do MVP: ERP/SEFAZ, leitura automática do XML da NF-e, app nativo, push, multi-idioma,
