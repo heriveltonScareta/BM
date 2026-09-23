@@ -35,8 +35,9 @@ app/(portal)    portal do cliente por token       app/api        route handlers 
 components/ui   shadcn                            components/*   layout, estados, medicao, auth…
 lib/auth        options, session, rbac (can), scope, password
 lib/db          prisma.ts (singleton), repositories/, generated/ (não editar)
-lib/services    regras de negócio: status-machine, calculation, audit, measurement-number, snapshot, auth…
-lib/validation  schemas Zod compartilhados (cnpj, money, common, auth)
+lib/services    regras de negócio: status-machine, calculation, audit, measurement-number, snapshot,
+                measurement (criação, itens, transições, timeline), measurement-dto, client, auth…
+lib/validation  schemas Zod compartilhados (cnpj, money, common, auth, client, measurement, locale)
 lib/email       adapter (dev grava em /tmp/bm-emails; smtp por env)
 lib/storage     adapter (local em ./storage; s3 esqueleto)
 lib/pdf         boletim (Fase 3)     lib/excel   import/export (Fase 3)
@@ -54,6 +55,10 @@ prisma/         schema, migrations, seed.ts       tests/  unit, integration, e2e
   API dentro de server components.
 - **Listagens:** estado (q, status, sort, order, page, pageSize) na URL via `useUrlState`; tabela com
   `components/tabelas/data-table.tsx` (`renderCard` obrigatório para o celular).
+- **Grade de itens:** `components/medicao/itens-grid.tsx`. Toda operação (criar, editar, duplicar,
+  excluir, reordenar) é uma chamada à API que devolve `{ item, totals }`; a UI só exibe prévia.
+- **Auditoria de entidades filhas:** gravar `measurementId` dentro de `before/after` para a timeline
+  da medição encontrar o evento.
 - **API:** todo route handler usa `withApi()` e começa com `requireSession()`/`requireAction()`.
   Erros: lançar `AppError`/`NotFoundError`/`ForbiddenError`/`ValidationError`/`TransitionError`.
 - **Validação:** um schema Zod em `lib/validation`, usado no formulário (client) e na rota (server).
