@@ -96,7 +96,7 @@ export function SelectUrl({
       }
     >
       <SelectTrigger className={cn("w-full sm:w-44", className)} aria-label={label}>
-        <SelectValue />
+        <SelectValue placeholder={options.find((o) => o.value === value)?.label} />
       </SelectTrigger>
       <SelectContent>
         {options.map((o) => (

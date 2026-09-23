@@ -216,7 +216,7 @@ export function DataTablePaginationBar({ pagination }: { pagination: DataTablePa
             onValueChange={(v) => setParams({ pageSize: v }, { resetPage: true })}
           >
             <SelectTrigger size="sm" className="w-[4.5rem]" aria-label="Itens por página">
-              <SelectValue />
+              <SelectValue placeholder={String(pageSize)} />
             </SelectTrigger>
             <SelectContent>
               {PAGE_SIZES.map((s) => (
