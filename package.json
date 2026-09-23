@@ -23,7 +23,7 @@
     "postinstall": "prisma generate"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.mts"
   },
   "engines": {
     "node": ">=22.12"
@@ -79,5 +79,6 @@
   },
   "overrides": {
     "nodemailer": "10.0.10"
-  }
+  },
+  "type": "module"
 }

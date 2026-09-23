@@ -17,6 +17,11 @@ import { computeItemTotal, computeTotals, totalsToStrings } from "../lib/service
 import { buildSnapshot } from "../lib/services/snapshot";
 import { formatMeasurementNumber } from "../lib/services/measurement-number";
 import type { AuditAction } from "../lib/services/audit.service";
+import { renderBoletimPdf, sha256Hex } from "../lib/pdf/render";
+import { boletimDataFromSnapshot, pdfFileName } from "../lib/pdf/data";
+import { renderSimplePdf } from "../lib/pdf/simple-pdf";
+import { getStorage } from "../lib/storage";
+import type { DocumentType } from "../lib/db/generated/enums";
 
 try {
   process.loadEnvFile(".env");
@@ -56,6 +61,34 @@ function lastDayOfMonth(y: number, m: number): number {
 
 function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
+}
+
+/** Grava um arquivo no storage e o registro em Document (documentos reais para a demo). */
+async function seedDocument(input: {
+  measurementId: string;
+  clientId: string;
+  type: DocumentType;
+  fileName: string;
+  mimeType: string;
+  data: Buffer;
+  uploadedByUserId?: string | null;
+  createdAt: Date;
+}) {
+  const stored = await getStorage().put(input.data, { extension: input.fileName.split(".").pop() });
+  return prisma.document.create({
+    data: {
+      measurementId: input.measurementId,
+      clientId: input.clientId,
+      type: input.type,
+      fileName: input.fileName,
+      mimeType: input.mimeType,
+      sizeBytes: stored.sizeBytes,
+      storageKey: stored.key,
+      checksum: stored.checksum,
+      uploadedByUserId: input.uploadedByUserId ?? null,
+      createdAt: input.createdAt,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +666,8 @@ async function main() {
     let requestId: string | null = null;
     let step = 0;
     let signatureId: string | null = null;
+    let versionPdf: Buffer | null = null;
+    let lastSnapshot: ReturnType<typeof buildSnapshot> | null = null;
     for (const next of path) {
       step += 1;
       const at = new Date(createdAt.getTime() + step * 36 * 60 * 60 * 1000);
@@ -661,17 +696,32 @@ async function main() {
           version,
           at,
         );
+        versionPdf = await renderBoletimPdf(
+          boletimDataFromSnapshot(snapshot, S.ENVIADO_AO_CLIENTE, { generatedAt: at }),
+        );
+        const versionDoc = await seedDocument({
+          measurementId: measurement.id,
+          clientId: client.id,
+          type: "BOLETIM",
+          fileName: pdfFileName(number, version),
+          mimeType: "application/pdf",
+          data: versionPdf,
+          uploadedByUserId: admin.id,
+          createdAt: at,
+        });
         const v = await prisma.measurementVersion.create({
           data: {
             measurementId: measurement.id,
             version,
             snapshot: JSON.parse(JSON.stringify(snapshot)),
+            pdfDocumentId: versionDoc.id,
             createdByUserId: admin.id,
             createdAt: at,
             reason: version > 1 ? "Correção solicitada pelo cliente" : null,
           },
         });
         versionId = v.id;
+        lastSnapshot = snapshot;
         await prisma.auditLog.create({
           data: {
             entity: "MeasurementVersion",
@@ -721,35 +771,96 @@ async function main() {
         label = `Portal do cliente: ${client.approver.name} <${client.approver.email}>`;
         action = approved ? "APROVADO" : "CORRECAO_SOLICITADA";
       } else if (next === S.ASSINADO) {
+        const documentHash = versionPdf ? sha256Hex(versionPdf) : sha256(`${number}-v${version}`);
+        const evidence = {
+          signerName: client.approver.name,
+          signerEmail: client.approver.email,
+          signedAt: at,
+          ipAddress: "177.35.120.14",
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0",
+          documentHash,
+          version,
+        };
         const sig = await prisma.signature.create({
           data: {
             measurementId: measurement.id,
             versionId: versionId!,
             approvalRequestId: requestId!,
-            signerName: client.approver.name,
-            signerEmail: client.approver.email,
+            signerName: evidence.signerName,
+            signerEmail: evidence.signerEmail,
             signedAt: at,
-            ipAddress: "177.35.120.14",
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0",
-            documentHash: sha256(`${number}-v${version}-assinado`),
+            ipAddress: evidence.ipAddress,
+            userAgent: evidence.userAgent,
+            documentHash,
             createdAt: at,
           },
         });
         signatureId = sig.id;
+        if (lastSnapshot) {
+          const signedPdf = await renderBoletimPdf(
+            boletimDataFromSnapshot(lastSnapshot, S.ASSINADO, {
+              signature: evidence,
+              generatedAt: at,
+            }),
+          );
+          await seedDocument({
+            measurementId: measurement.id,
+            clientId: client.id,
+            type: "BOLETIM_ASSINADO",
+            fileName: `${number}-v${version}-assinado.pdf`,
+            mimeType: "application/pdf",
+            data: signedPdf,
+            createdAt: at,
+          });
+        }
         actorUserId = null;
         label = `Portal do cliente: ${client.approver.name} <${client.approver.email}>`;
         action = "ASSINADO";
       } else if (next === S.NF_ANEXADA) {
         invoiceSeq += 1;
+        const nfNumber = String(invoiceSeq).padStart(6, "0");
+        const nfPdf = await renderSimplePdf(`Nota Fiscal de Serviço nº ${nfNumber} — série 1`, [
+          `Emitente: Prestadora Demo Ltda — CNPJ 12.345.678/0001-95`,
+          `Tomador: ${client.legalName}`,
+          `Referência: Boletim de Medição ${number}`,
+          `Valor total: R$ ${totals.totalAmount}`,
+          "Documento de demonstração gerado pelo seed.",
+        ]);
+        const nfXml = Buffer.from(
+          `<?xml version="1.0" encoding="UTF-8"?>\n<nfse><numero>${nfNumber}</numero><serie>1</serie><prestador><cnpj>12345678000195</cnpj></prestador><tomador><cnpj>${client.cnpj}</cnpj><razao>${client.legalName}</razao></tomador><referencia>${number}</referencia><valor>${totals.totalAmount}</valor></nfse>\n`,
+          "utf8",
+        );
+        const nfPdfDoc = await seedDocument({
+          measurementId: measurement.id,
+          clientId: client.id,
+          type: "NF_PDF",
+          fileName: `NF-${nfNumber}.pdf`,
+          mimeType: "application/pdf",
+          data: nfPdf,
+          uploadedByUserId: financeiro.id,
+          createdAt: at,
+        });
+        const nfXmlDoc = await seedDocument({
+          measurementId: measurement.id,
+          clientId: client.id,
+          type: "NF_XML",
+          fileName: `NF-${nfNumber}.xml`,
+          mimeType: "application/xml",
+          data: nfXml,
+          uploadedByUserId: financeiro.id,
+          createdAt: at,
+        });
         const invoice = await prisma.invoice.create({
           data: {
             measurementId: measurement.id,
-            number: String(invoiceSeq).padStart(6, "0"),
+            number: nfNumber,
             series: "1",
             issueDate: at,
             amount: totals.totalAmount,
             status: plan.status === S.FATURADO ? InvoiceStatus.ENVIADA : InvoiceStatus.EMITIDA,
             sentAt: plan.status === S.FATURADO ? at : null,
+            pdfDocumentId: nfPdfDoc.id,
+            xmlDocumentId: nfXmlDoc.id,
             createdAt: at,
             updatedAt: at,
           },
