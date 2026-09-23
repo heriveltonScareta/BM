@@ -1,0 +1,396 @@
+// Schema do Sistema de Medicao, Aprovacao e Faturamento.
+// Nomes em ingles no banco; rotulos em pt-BR na UI.
+// Valores monetarios e quantidades sempre Decimal (nunca Float).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/db/generated"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  OPERACIONAL
+  FINANCEIRO
+  CLIENTE
+}
+
+enum MeasurementStatus {
+  RASCUNHO
+  EM_ELABORACAO
+  AGUARDANDO_ENVIO
+  ENVIADO_AO_CLIENTE
+  EM_APROVACAO
+  APROVADO
+  CORRECAO_SOLICITADA
+  ASSINADO
+  LIBERADO_FATURAMENTO
+  NF_ANEXADA
+  FATURADO
+  CANCELADO
+}
+
+enum ApprovalDecision {
+  APPROVED
+  CHANGES_REQUESTED
+}
+
+enum InvoiceStatus {
+  EMITIDA
+  ENVIADA
+  PAGA
+  CANCELADA
+}
+
+enum DocumentType {
+  BOLETIM
+  BOLETIM_ASSINADO
+  NF_PDF
+  NF_XML
+  OUTRO
+}
+
+// ---------------------------------------------------------------------------
+// Usuarios e clientes
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid(7))
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role
+  clientId     String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  client              Client?              @relation(fields: [clientId], references: [id])
+  ownedMeasurements   Measurement[]        @relation("MeasurementOwner")
+  createdVersions     MeasurementVersion[]
+  uploadedDocuments   Document[]
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([clientId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid(7))
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Client {
+  id        String    @id @default(uuid(7))
+  code      String    @unique
+  legalName String
+  tradeName String
+  cnpj      String    @unique
+  email     String?
+  phone     String?
+  address   String?
+  notes     String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users        User[]
+  contacts     ClientContact[]
+  contracts    Contract[]
+  measurements Measurement[]
+  documents    Document[]
+}
+
+model ClientContact {
+  id         String   @id @default(uuid(7))
+  clientId   String
+  name       String
+  role       String?
+  email      String
+  phone      String?
+  isApprover Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
+
+model Contract {
+  id        String    @id @default(uuid(7))
+  clientId  String
+  code      String
+  name      String
+  unit      String
+  startDate DateTime  @db.Date
+  endDate   DateTime? @db.Date
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  client       Client        @relation(fields: [clientId], references: [id])
+  measurements Measurement[]
+
+  @@unique([clientId, code])
+  @@index([clientId])
+}
+
+// ---------------------------------------------------------------------------
+// Medicao (Boletim de Medicao)
+// ---------------------------------------------------------------------------
+
+/// Contador por ano para gerar BM-AAAA-NNNN de forma atomica.
+model MeasurementCounter {
+  year       Int @id
+  lastNumber Int @default(0)
+}
+
+model Measurement {
+  id             String            @id @default(uuid(7))
+  number         String            @unique
+  clientId       String
+  contractId     String
+  /// Competencia no formato AAAA-MM
+  competence     String
+  startDate      DateTime          @db.Date
+  endDate        DateTime          @db.Date
+  issueDate      DateTime          @db.Date
+  ownerUserId    String
+  frs            String?
+  purchaseOrder  String?
+  status         MeasurementStatus @default(RASCUNHO)
+  currentVersion Int               @default(0)
+  otherAmount    Decimal           @default(0) @db.Decimal(18, 2)
+  discountAmount Decimal           @default(0) @db.Decimal(18, 2)
+  additionAmount Decimal           @default(0) @db.Decimal(18, 2)
+  taxAmount      Decimal           @default(0) @db.Decimal(18, 2)
+  laborTotal     Decimal           @default(0) @db.Decimal(18, 2)
+  equipmentTotal Decimal           @default(0) @db.Decimal(18, 2)
+  subtotal       Decimal           @default(0) @db.Decimal(18, 2)
+  totalAmount    Decimal           @default(0) @db.Decimal(18, 2)
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  canceledAt     DateTime?
+  deletedAt      DateTime?
+
+  client           Client               @relation(fields: [clientId], references: [id])
+  contract         Contract             @relation(fields: [contractId], references: [id])
+  owner            User                 @relation("MeasurementOwner", fields: [ownerUserId], references: [id])
+  laborItems       LaborItem[]
+  equipmentItems   EquipmentItem[]
+  versions         MeasurementVersion[]
+  approvalRequests ApprovalRequest[]
+  signatures       Signature[]
+  invoice          Invoice?
+  documents        Document[]
+
+  @@index([clientId, status])
+  @@index([clientId, competence])
+  @@index([frs])
+  @@index([purchaseOrder])
+  @@index([status])
+  @@index([competence])
+}
+
+model LaborItem {
+  id            String   @id @default(uuid(7))
+  measurementId String
+  code          String
+  role          String
+  description   String?
+  quantity      Decimal  @db.Decimal(18, 6)
+  unit          String
+  daysHours     Decimal  @default(0) @db.Decimal(18, 6)
+  unitPrice     Decimal  @db.Decimal(18, 6)
+  totalPrice    Decimal  @db.Decimal(18, 2)
+  sortOrder     Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  measurement Measurement @relation(fields: [measurementId], references: [id])
+
+  @@index([measurementId, sortOrder])
+}
+
+model EquipmentItem {
+  id            String   @id @default(uuid(7))
+  measurementId String
+  code          String
+  name          String
+  description   String?
+  quantity      Decimal  @db.Decimal(18, 6)
+  unit          String
+  daysHours     Decimal  @default(0) @db.Decimal(18, 6)
+  unitPrice     Decimal  @db.Decimal(18, 6)
+  totalPrice    Decimal  @db.Decimal(18, 2)
+  sortOrder     Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  measurement Measurement @relation(fields: [measurementId], references: [id])
+
+  @@index([measurementId, sortOrder])
+}
+
+/// Snapshot imutavel do boletim a cada envio ao cliente.
+model MeasurementVersion {
+  id              String   @id @default(uuid(7))
+  measurementId   String
+  version         Int
+  snapshot        Json
+  pdfDocumentId   String?  @unique
+  createdByUserId String
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  measurement      Measurement       @relation(fields: [measurementId], references: [id])
+  createdBy        User              @relation(fields: [createdByUserId], references: [id])
+  pdfDocument      Document?         @relation("VersionPdf", fields: [pdfDocumentId], references: [id])
+  approvalRequests ApprovalRequest[]
+  signatures       Signature[]
+
+  @@unique([measurementId, version])
+}
+
+model ApprovalRequest {
+  id            String            @id @default(uuid(7))
+  measurementId String
+  versionId     String
+  /// SHA-256 do token; o token bruto nunca e persistido
+  tokenHash     String            @unique
+  expiresAt     DateTime
+  sentToEmail   String
+  sentToName    String
+  sentAt        DateTime          @default(now())
+  openedAt      DateTime?
+  decidedAt     DateTime?
+  decision      ApprovalDecision?
+  comment       String?
+  usedAt        DateTime?
+  createdAt     DateTime          @default(now())
+
+  measurement Measurement        @relation(fields: [measurementId], references: [id])
+  version     MeasurementVersion @relation(fields: [versionId], references: [id])
+  signature   Signature?
+
+  @@index([measurementId])
+}
+
+model Signature {
+  id                String   @id @default(uuid(7))
+  measurementId     String
+  versionId         String
+  approvalRequestId String   @unique
+  signerName        String
+  signerEmail       String
+  signedAt          DateTime @default(now())
+  ipAddress         String
+  userAgent         String
+  /// SHA-256 do PDF assinado
+  documentHash      String
+  signatureImage    String?
+  createdAt         DateTime @default(now())
+
+  measurement     Measurement        @relation(fields: [measurementId], references: [id])
+  version         MeasurementVersion @relation(fields: [versionId], references: [id])
+  approvalRequest ApprovalRequest    @relation(fields: [approvalRequestId], references: [id])
+
+  @@index([measurementId])
+}
+
+// ---------------------------------------------------------------------------
+// Faturamento e documentos
+// ---------------------------------------------------------------------------
+
+model Invoice {
+  id            String        @id @default(uuid(7))
+  measurementId String        @unique
+  number        String
+  series        String?
+  issueDate     DateTime      @db.Date
+  amount        Decimal       @db.Decimal(18, 2)
+  sentAt        DateTime?
+  status        InvoiceStatus @default(EMITIDA)
+  notes         String?
+  pdfDocumentId String?       @unique
+  xmlDocumentId String?       @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  measurement Measurement @relation(fields: [measurementId], references: [id])
+  pdfDocument Document?   @relation("InvoicePdf", fields: [pdfDocumentId], references: [id])
+  xmlDocument Document?   @relation("InvoiceXml", fields: [xmlDocumentId], references: [id])
+
+  @@index([number])
+}
+
+model Document {
+  id               String       @id @default(uuid(7))
+  measurementId    String?
+  clientId         String?
+  type             DocumentType
+  fileName         String
+  mimeType         String
+  sizeBytes        Int
+  /// UUID gerado pelo storage; nunca o nome original
+  storageKey       String       @unique
+  checksum         String
+  uploadedByUserId String?
+  createdAt        DateTime     @default(now())
+  deletedAt        DateTime?
+
+  measurement Measurement?        @relation(fields: [measurementId], references: [id])
+  client      Client?             @relation(fields: [clientId], references: [id])
+  uploadedBy  User?               @relation(fields: [uploadedByUserId], references: [id])
+  version     MeasurementVersion? @relation("VersionPdf")
+  invoicePdf  Invoice?            @relation("InvoicePdf")
+  invoiceXml  Invoice?            @relation("InvoiceXml")
+
+  @@index([measurementId])
+  @@index([clientId])
+}
+
+// ---------------------------------------------------------------------------
+// Auditoria (somente append)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(uuid(7))
+  entity      String
+  entityId    String
+  action      String
+  actorUserId String?
+  actorLabel  String
+  before      Json?
+  after       Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entity, entityId, createdAt])
+  @@index([actorUserId])
+  @@index([createdAt])
+}
