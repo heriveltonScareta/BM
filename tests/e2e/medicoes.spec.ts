@@ -24,8 +24,8 @@ test.describe("medições", () => {
     const tabela = page.getByRole("table", { name: "Lista de boletins de medição" });
     await expect(tabela).toContainText("BM-2026-0001");
     await page.getByRole("combobox", { name: "Status" }).click();
-    await page.getByRole("option", { name: "Faturado" }).click();
-    await expect(page).toHaveURL(/status=FATURADO/);
+    await page.getByRole("option", { name: "Liberado p/ faturamento" }).click();
+    await expect(page).toHaveURL(/status=LIBERADO_FATURAMENTO/);
     await expect(tabela.getByRole("row")).toHaveCount(2);
     await page.goto("/medicoes?q=FRS-2026-0715");
     await expect(tabela.getByRole("row")).toHaveCount(2);

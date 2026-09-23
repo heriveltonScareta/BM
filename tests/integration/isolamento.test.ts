@@ -36,6 +36,12 @@ import * as clienteStatusRoute from "@/app/api/clientes/[id]/status/route";
 import * as contatosRoute from "@/app/api/clientes/[id]/contatos/route";
 import * as contratosRoute from "@/app/api/clientes/[id]/contratos/route";
 import * as listaMedicoes from "@/app/api/medicoes/route";
+import * as liberarRoute from "@/app/api/medicoes/[id]/liberar/route";
+import * as notaFiscalRoute from "@/app/api/medicoes/[id]/nota-fiscal/route";
+import * as faturarRoute from "@/app/api/medicoes/[id]/faturar/route";
+import * as docsMedicaoRoute from "@/app/api/medicoes/[id]/documentos/route";
+import * as docRemoveRoute from "@/app/api/documentos/[id]/route";
+import * as docsListaRoute from "@/app/api/documentos/route";
 
 type Handler = (
   req: Request,
@@ -274,6 +280,61 @@ describe("isolamento por cliente — Cliente A × recursos do Cliente B", () => 
       body: {},
       esperado: [403],
     },
+    {
+      nome: "POST liberar",
+      handler: liberarRoute.POST,
+      method: "POST",
+      params: { id: medB },
+      esperado: [403],
+    },
+    {
+      nome: "GET nota fiscal",
+      handler: notaFiscalRoute.GET,
+      params: { id: medB },
+      esperado: [404],
+    },
+    {
+      nome: "POST nota fiscal",
+      handler: notaFiscalRoute.POST,
+      method: "POST",
+      params: { id: medB },
+      esperado: [403],
+    },
+    {
+      nome: "PATCH nota fiscal",
+      handler: notaFiscalRoute.PATCH,
+      method: "PATCH",
+      params: { id: medB },
+      body: { status: "PAGA" },
+      esperado: [403],
+    },
+    {
+      nome: "POST faturar",
+      handler: faturarRoute.POST,
+      method: "POST",
+      params: { id: medB },
+      esperado: [403],
+    },
+    {
+      nome: "GET documentos da medição",
+      handler: docsMedicaoRoute.GET,
+      params: { id: medB },
+      esperado: [404],
+    },
+    {
+      nome: "POST documento da medição",
+      handler: docsMedicaoRoute.POST,
+      method: "POST",
+      params: { id: medB },
+      esperado: [403],
+    },
+    {
+      nome: "DELETE documento",
+      handler: docRemoveRoute.DELETE,
+      method: "DELETE",
+      params: { id: docB },
+      esperado: [403],
+    },
   ];
 
   it("nenhuma rota devolve 200 para recursos do Cliente B", async () => {
@@ -305,6 +366,11 @@ describe("isolamento por cliente — Cliente A × recursos do Cliente B", () => 
     const numB = (await prisma.measurement.findUniqueOrThrow({ where: { id: medB } })).number;
     const busca = await callRoute(listaMedicoes.GET, { path: `/api/medicoes?q=${numB}` });
     expect((busca.json as { total: number }).total).toBe(0);
+    // listagem de documentos: nada de B, mesmo filtrando pelo clientId de B
+    const docs = await callRoute(docsListaRoute.GET, {
+      path: `/api/documentos?clientId=${b.client.id}`,
+    });
+    expect((docs.json as { total: number }).total).toBe(0);
   });
 
   it("financeiro e cliente não acessam rotas administrativas de envio; portal rejeita token malformado", async () => {

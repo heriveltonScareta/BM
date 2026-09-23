@@ -255,7 +255,7 @@ describe("measurement.service", () => {
     expect(m2.status).toBe(S.AGUARDANDO_ENVIO);
     await expect(
       transitionMeasurement(users.admin, ALL, id, S.ENVIADO_AO_CLIENTE, actor),
-    ).rejects.toThrow(/fluxo próprio/);
+    ).rejects.toThrow(/Enviar ao cliente/);
   });
 
   it("itens ficam bloqueados fora dos status editáveis", async () => {
