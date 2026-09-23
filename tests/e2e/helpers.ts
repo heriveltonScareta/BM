@@ -22,3 +22,16 @@ export async function login(page: Page, perfil: Perfil, senha = SENHA) {
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(/\/dashboard/);
 }
+
+/** Gera um CNPJ válido aleatório (para cadastros de teste sem colidir com o seed). */
+export function cnpjAleatorio(): string {
+  const base = Array.from({ length: 8 }, () => Math.floor(Math.random() * 10)).join("") + "0001";
+  const calc = (b: string, w: number[]) => {
+    const sum = b.split("").reduce((acc, ch, i) => acc + Number(ch) * (w[i] ?? 0), 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  const d1 = calc(base, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const d2 = calc(base + d1, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return `${base}${d1}${d2}`;
+}
