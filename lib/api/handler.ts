@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
+import { ZodError, type z } from "zod";
 import { AppError } from "@/lib/errors";
+import type { SessionUser } from "@/lib/auth/rbac";
+import { actorFromUser, type AuditActor } from "@/lib/services/audit.service";
 
 export interface ApiErrorBody {
   error: { code: string; message: string; details?: unknown };
@@ -71,4 +73,15 @@ export async function readJson<T = unknown>(req: Request): Promise<T> {
   } catch {
     throw new AppError("Corpo da requisição inválido (JSON esperado).", 400, "BAD_JSON");
   }
+}
+
+/** Ator de auditoria a partir da sessao + request (IP e user-agent). */
+export function actorFromRequest(user: SessionUser, req: Request): AuditActor {
+  return actorFromUser(user, { ip: getClientIp(req), userAgent: getUserAgent(req) });
+}
+
+/** Le e valida os query params com um schema Zod. */
+export function parseQuery<T extends z.ZodTypeAny>(req: Request, schema: T): z.output<T> {
+  const url = new URL(req.url);
+  return schema.parse(Object.fromEntries(url.searchParams.entries()));
 }
