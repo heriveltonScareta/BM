@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, CheckCheck, Loader2, Play, Undo2 } from "lucide-react";
+import { Ban, CheckCheck, Loader2, Play, Send, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MeasurementStatus as S } from "@/lib/db/generated/enums";
 import { api, ApiClientError } from "@/lib/api/client";
+import { EnviarDialog, type AprovadorOpcao } from "@/components/medicao/enviar-dialog";
 
 interface AcaoDef {
   to: S;
@@ -32,6 +33,34 @@ function acoesDisponiveis(status: S, permitidas: S[]): AcaoDef[] {
   const defs: AcaoDef[] = [];
   if (permitidas.includes(S.EM_ELABORACAO) && status === S.RASCUNHO) {
     defs.push({ to: S.EM_ELABORACAO, label: "Iniciar elaboração", icon: <Play aria-hidden /> });
+  }
+  if (permitidas.includes(S.EM_ELABORACAO) && status === S.CORRECAO_SOLICITADA) {
+    defs.push({
+      to: S.EM_ELABORACAO,
+      label: "Corrigir (nova versão)",
+      icon: <Undo2 aria-hidden />,
+      confirmacao: {
+        titulo: "Abrir nova versão para correção?",
+        descricao:
+          "A medição volta para elaboração. Ao reenviar, uma nova versão será congelada e o cliente receberá um novo link.",
+        botao: "Abrir para correção",
+      },
+    });
+  }
+  if (permitidas.includes(S.EM_ELABORACAO) && status === S.FATURADO) {
+    defs.push({
+      to: S.EM_ELABORACAO,
+      label: "Estornar",
+      icon: <Undo2 aria-hidden />,
+      variant: "outline",
+      confirmacao: {
+        titulo: "Estornar medição faturada?",
+        descricao:
+          "A medição volta para elaboração em uma nova versão. Informe o motivo do estorno; ele fica registrado na auditoria.",
+        botao: "Estornar",
+        motivo: true,
+      },
+    });
   }
   if (permitidas.includes(S.EM_ELABORACAO) && status === S.AGUARDANDO_ENVIO) {
     defs.push({
@@ -74,18 +103,26 @@ function acoesDisponiveis(status: S, permitidas: S[]): AcaoDef[] {
 
 export function MedicaoAcoes({
   medicaoId,
+  numero,
   status,
   permitidas,
+  podeEnviar,
+  aprovadores,
 }: {
   medicaoId: string;
+  numero: string;
   status: S;
   permitidas: S[];
+  podeEnviar: boolean;
+  aprovadores: AprovadorOpcao[];
 }) {
   const router = useRouter();
   const [pendente, setPendente] = useState<AcaoDef | null>(null);
   const [motivo, setMotivo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [enviar, setEnviar] = useState(false);
   const acoes = acoesDisponiveis(status, permitidas);
+  const mostrarEnviar = podeEnviar && status === S.AGUARDANDO_ENVIO;
 
   async function executar(acao: AcaoDef) {
     setBusy(true);
@@ -105,10 +142,25 @@ export function MedicaoAcoes({
     }
   }
 
-  if (acoes.length === 0) return null;
+  if (acoes.length === 0 && !mostrarEnviar) return null;
 
   return (
     <>
+      {mostrarEnviar ? (
+        <Button size="sm" onClick={() => setEnviar(true)} disabled={busy}>
+          <Send aria-hidden /> Enviar ao cliente
+        </Button>
+      ) : null}
+      {/* fica montado mesmo apos o envio, para exibir o resultado ate o usuario fechar */}
+      {podeEnviar ? (
+        <EnviarDialog
+          medicaoId={medicaoId}
+          numero={numero}
+          aprovadores={aprovadores}
+          open={enviar}
+          onClose={() => setEnviar(false)}
+        />
+      ) : null}
       {acoes.map((a) => (
         <Button
           key={a.to}

@@ -13,17 +13,20 @@ import type { MeasurementDto } from "@/lib/services/measurement-dto";
 import type { MeasurementTotals } from "@/lib/services/measurement.service";
 import { useUrlState } from "@/hooks/use-url-state";
 import { ExportarButton, ImportarDialog } from "@/components/medicao/importar-dialog";
+import { VersoesTab, type VersaoResumo } from "@/components/medicao/versoes-tab";
 
 export function MedicaoWorkspace({
   medicao,
   editable,
   contratos,
   timeline,
+  versoes,
 }: {
   medicao: MeasurementDto;
   editable: boolean;
   contratos: ContratoOpcao[];
   timeline: TimelineEntry[];
+  versoes: VersaoResumo[];
 }) {
   const [totals, setTotals] = useState<MeasurementTotals>({
     laborTotal: medicao.laborTotal,
@@ -70,6 +73,12 @@ export function MedicaoWorkspace({
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="dados">Dados e ajustes</TabsTrigger>
+          <TabsTrigger value="versoes">
+            Versões{" "}
+            <Badge variant="secondary" className="ml-1 tabular">
+              {versoes.length}
+            </Badge>
+          </TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
         <TabsContent value="mao-de-obra" className="mt-3">
@@ -100,6 +109,9 @@ export function MedicaoWorkspace({
           ) : (
             <DadosSomenteLeitura medicao={medicao} />
           )}
+        </TabsContent>
+        <TabsContent value="versoes" className="mt-3">
+          <VersoesTab medicaoId={medicao.id} versoes={versoes} vigente={medicao.currentVersion} />
         </TabsContent>
         <TabsContent value="historico" className="mt-3">
           <Timeline entries={timeline} />
