@@ -49,12 +49,19 @@ prisma/         schema, migrations, seed.ts       tests/  unit, integration, e2e
 - **Commits:** pequenos e atômicos, `tipo(escopo): descrição` (`feat(medicao): calculo de totais`).
 - **Arquitetura:** rotas/componentes **nunca** importam Prisma (regra ESLint `no-restricted-imports`).
   Leitura via `lib/db/repositories` com `Scope`; escrita via `lib/services`.
+- **Leitura × escrita:** páginas (server components) leem via service com `requireSession` + `can` +
+  `getScope`; o navegador escreve (e lê listas dinâmicas) via route handlers. Nunca `fetch` da própria
+  API dentro de server components.
+- **Listagens:** estado (q, status, sort, order, page, pageSize) na URL via `useUrlState`; tabela com
+  `components/tabelas/data-table.tsx` (`renderCard` obrigatório para o celular).
 - **API:** todo route handler usa `withApi()` e começa com `requireSession()`/`requireAction()`.
   Erros: lançar `AppError`/`NotFoundError`/`ForbiddenError`/`ValidationError`/`TransitionError`.
 - **Validação:** um schema Zod em `lib/validation`, usado no formulário (client) e na rota (server).
 - **Dinheiro/quantidade:** `Decimal` (Prisma/decimal.js). Nunca `Float`/`Number`. Calcular só em
   `lib/services/calculation.ts`. Exibir com `formatCurrency` (`R$ 1.234.567,89`) e classe `tabular`.
-- **Datas:** armazenar UTC; exibir `dd/MM/aaaa` em `America/Sao_Paulo` via `lib/utils/dates.ts`.
+- **Datas:** armazenar UTC. Instantes (`createdAt`, `signedAt`…) exibem em `America/Sao_Paulo` com
+  `formatDateTime`/`formatTimestampAsDate`. Datas puras (`@db.Date`: `startDate`, `issueDate`…) ficam a
+  meia-noite UTC e usam `formatDate` **sem** conversão de fuso (senão mostram o dia anterior).
   Competência armazenada `AAAA-MM`, exibida `MM/AAAA`.
 - **TypeScript:** `any` proibido (`eslint-disable` só com justificativa). `noUncheckedIndexedAccess` ligado.
 - **Estados de tela:** usar `components/estados` (carregando, vazio, erro, sem permissão).
@@ -89,6 +96,8 @@ Travas: itens bloqueados a partir de `ENVIADO_AO_CLIENTE` (`isEditable`); sem li
 1. Escopo (`lib/auth/scope.ts`) deriva **só** da sessão do servidor. Nunca de query/body.
 2. Todo repositório de medição/documento/NF/versão/assinatura recebe `Scope` como primeiro argumento.
 3. Registro fora do escopo ⇒ `NotFoundError` (404, nunca 403).
+   Buscar por id **sempre** com `where: { AND: [{ id }, scopeWhere(scope)] }`. Nunca `{ id, ...scopeWhere }`:
+   o spread deixa o `id` do escopo sobrescrever o `id` pedido (bug real pego por teste na Fase 1).
 4. Download de arquivo só por rota autenticada com verificação de escopo; chave de storage é UUID.
 5. Teste dedicado de isolamento (Cliente A × Cliente B em todas as rotas) faz parte do DoD.
 
