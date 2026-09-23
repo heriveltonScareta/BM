@@ -85,3 +85,14 @@ export function parseQuery<T extends z.ZodTypeAny>(req: Request, schema: T): z.o
   const url = new URL(req.url);
   return schema.parse(Object.fromEntries(url.searchParams.entries()));
 }
+
+/** Corpo JSON opcional (requisicoes sem corpo retornam {}). */
+export async function readJsonOptional<T = Record<string, unknown>>(req: Request): Promise<T> {
+  const text = await req.text();
+  if (!text.trim()) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new AppError("Corpo da requisição inválido (JSON esperado).", 400, "BAD_JSON");
+  }
+}
