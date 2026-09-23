@@ -7,6 +7,8 @@ import { EstadoVazio } from "@/components/estados";
 import { StatusBadge } from "@/components/medicao/status-badge";
 import { formatCurrency } from "@/lib/utils/format";
 import { formatCompetence, formatDate, formatTimestampAsDate } from "@/lib/utils/dates";
+import type { InvoiceStatus } from "@/lib/db/generated/enums";
+import { INVOICE_STATUS_LABELS } from "@/lib/validation/invoice";
 
 export interface MedicaoRow {
   id: string;
@@ -23,6 +25,13 @@ export interface MedicaoRow {
   updatedAt: string;
   client: { id: string; code: string; tradeName: string };
   contract: { id: string; code: string; name: string; unit: string };
+  invoice?: {
+    number: string;
+    status: InvoiceStatus;
+    issueDate: string;
+    amount: string;
+    sentAt: string | null;
+  } | null;
 }
 
 const columns: ColumnDef<MedicaoRow, unknown>[] = [
@@ -86,6 +95,33 @@ const columns: ColumnDef<MedicaoRow, unknown>[] = [
   },
 ];
 
+const nfColumns: ColumnDef<MedicaoRow, unknown>[] = [
+  {
+    id: "nf",
+    header: "Nota fiscal",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.invoice ? (
+        <div className="min-w-0">
+          <div className="font-mono text-xs">{row.original.invoice.number}</div>
+          <div className="text-xs text-muted-foreground">
+            {INVOICE_STATUS_LABELS[row.original.invoice.status]} ·{" "}
+            {formatDate(row.original.invoice.issueDate)}
+          </div>
+        </div>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  {
+    id: "nfAmount",
+    header: "Valor NF",
+    enableSorting: false,
+    cell: ({ row }) => (row.original.invoice ? formatCurrency(row.original.invoice.amount) : "—"),
+    meta: { align: "right" },
+  },
+];
+
 export function MedicoesTabela({
   data,
   pagination,
@@ -93,6 +129,7 @@ export function MedicoesTabela({
   order,
   podeCriar,
   filtrado,
+  mostrarNf,
 }: {
   data: MedicaoRow[];
   pagination: DataTablePagination;
@@ -100,10 +137,12 @@ export function MedicoesTabela({
   order: "asc" | "desc";
   podeCriar: boolean;
   filtrado: boolean;
+  mostrarNf?: boolean;
 }) {
+  const cols = mostrarNf ? [...columns.slice(0, 6), ...nfColumns, ...columns.slice(6)] : columns;
   return (
     <DataTable
-      columns={columns}
+      columns={cols}
       data={data}
       pagination={pagination}
       sort={sort}

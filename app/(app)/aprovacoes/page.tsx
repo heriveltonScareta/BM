@@ -5,10 +5,10 @@ import { BuscaUrl, SelectUrl } from "@/components/tabelas/filtros";
 import { MedicoesTabela } from "@/components/medicao/medicoes-tabela";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { getMeasurements } from "@/lib/services/measurement.service";
+import { toMeasurementListRow } from "@/lib/services/measurement-dto";
 import { measurementListQuerySchema } from "@/lib/validation/measurement";
 import { MeasurementStatus as S } from "@/lib/db/generated/enums";
 import { STATUS_LABELS } from "@/lib/services/status-machine";
-import { dateToDateOnly } from "@/lib/utils/dates";
 
 export const metadata: Metadata = { title: "Aprovações" };
 
@@ -50,14 +50,7 @@ export default async function AprovacoesPage({
         />
       </div>
       <MedicoesTabela
-        data={result.items.map((m) => ({
-          ...m,
-          startDate: dateToDateOnly(m.startDate),
-          endDate: dateToDateOnly(m.endDate),
-          issueDate: dateToDateOnly(m.issueDate),
-          totalAmount: m.totalAmount.toString(),
-          updatedAt: m.updatedAt.toISOString(),
-        }))}
+        data={result.items.map(toMeasurementListRow)}
         pagination={{
           page: result.page,
           pageSize: result.pageSize,

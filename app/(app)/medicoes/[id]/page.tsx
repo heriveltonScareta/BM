@@ -11,6 +11,8 @@ import { MedicaoWorkspace } from "@/components/medicao/medicao-workspace";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { getMeasurement, getMeasurementTimeline } from "@/lib/services/measurement.service";
 import { getApprovalStatus, listVersions } from "@/lib/services/approval.service";
+import { getBillingInfo } from "@/lib/services/billing.service";
+import { listMeasurementDocuments } from "@/lib/services/document.service";
 import { AprovacaoBanner } from "@/components/medicao/aprovacao-banner";
 import { toMeasurementDto } from "@/lib/services/measurement-dto";
 import { getClient } from "@/lib/services/client.service";
@@ -32,12 +34,16 @@ export default async function MedicaoPage({ params }: { params: Promise<{ id: st
   let timeline;
   let aprovacao;
   let versoes;
+  let faturamento;
+  let documentos;
   try {
-    [detail, timeline, aprovacao, versoes] = await Promise.all([
+    [detail, timeline, aprovacao, versoes, faturamento, documentos] = await Promise.all([
       getMeasurement(scope, id),
       getMeasurementTimeline(scope, id),
       getApprovalStatus(scope, id),
       listVersions(scope, id),
+      getBillingInfo(scope, id),
+      listMeasurementDocuments(scope, id),
     ]);
   } catch (e) {
     if (e instanceof NotFoundError) notFound();
@@ -166,6 +172,19 @@ export default async function MedicaoPage({ params }: { params: Promise<{ id: st
         medicao={medicao}
         editable={editable}
         contratos={contratos}
+        faturamento={faturamento}
+        podeFaturar={can(user, "faturamento:gerenciar")}
+        podeUpload={can(user, "documentos:upload")}
+        documentos={documentos.map((d) => ({
+          id: d.id,
+          type: d.type,
+          fileName: d.fileName,
+          mimeType: d.mimeType,
+          sizeBytes: d.sizeBytes,
+          checksum: d.checksum,
+          createdAt: d.createdAt.toISOString(),
+          uploadedBy: d.uploadedBy?.name ?? null,
+        }))}
         versoes={versoes.map((v) => ({
           id: v.id,
           version: v.version,

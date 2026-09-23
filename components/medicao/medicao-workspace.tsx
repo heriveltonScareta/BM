@@ -14,6 +14,8 @@ import type { MeasurementTotals } from "@/lib/services/measurement.service";
 import { useUrlState } from "@/hooks/use-url-state";
 import { ExportarButton, ImportarDialog } from "@/components/medicao/importar-dialog";
 import { VersoesTab, type VersaoResumo } from "@/components/medicao/versoes-tab";
+import { FaturamentoTab, type FaturamentoInfo } from "@/components/medicao/faturamento-tab";
+import { DocumentosTab, type DocumentoRow } from "@/components/medicao/documentos-tab";
 
 export function MedicaoWorkspace({
   medicao,
@@ -21,12 +23,20 @@ export function MedicaoWorkspace({
   contratos,
   timeline,
   versoes,
+  faturamento,
+  documentos,
+  podeFaturar,
+  podeUpload,
 }: {
   medicao: MeasurementDto;
   editable: boolean;
   contratos: ContratoOpcao[];
   timeline: TimelineEntry[];
   versoes: VersaoResumo[];
+  faturamento: FaturamentoInfo;
+  documentos: DocumentoRow[];
+  podeFaturar: boolean;
+  podeUpload: boolean;
 }) {
   const [totals, setTotals] = useState<MeasurementTotals>({
     laborTotal: medicao.laborTotal,
@@ -79,6 +89,13 @@ export function MedicaoWorkspace({
               {versoes.length}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="faturamento">Faturamento</TabsTrigger>
+          <TabsTrigger value="documentos">
+            Documentos{" "}
+            <Badge variant="secondary" className="ml-1 tabular">
+              {documentos.length}
+            </Badge>
+          </TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
         <TabsContent value="mao-de-obra" className="mt-3">
@@ -112,6 +129,17 @@ export function MedicaoWorkspace({
         </TabsContent>
         <TabsContent value="versoes" className="mt-3">
           <VersoesTab medicaoId={medicao.id} versoes={versoes} vigente={medicao.currentVersion} />
+        </TabsContent>
+        <TabsContent value="faturamento" className="mt-3">
+          <FaturamentoTab medicaoId={medicao.id} info={faturamento} podeGerenciar={podeFaturar} />
+        </TabsContent>
+        <TabsContent value="documentos" className="mt-3">
+          <DocumentosTab
+            medicaoId={medicao.id}
+            documentos={documentos}
+            podeUpload={podeUpload}
+            cancelada={medicao.status === "CANCELADO"}
+          />
         </TabsContent>
         <TabsContent value="historico" className="mt-3">
           <Timeline entries={timeline} />
