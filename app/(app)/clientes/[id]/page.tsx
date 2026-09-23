@@ -7,8 +7,10 @@ import { AtivoBadge } from "@/components/clientes/clientes-tabela";
 import { ClienteAcoes } from "@/components/clientes/cliente-acoes";
 import { ContatosCard } from "@/components/clientes/contatos-card";
 import { ContratosCard } from "@/components/clientes/contratos-card";
+import { MedicoesResumoCard } from "@/components/clientes/medicoes-resumo-card";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { getClient } from "@/lib/services/client.service";
+import { getClientSummary } from "@/lib/services/report.service";
 import { NotFoundError } from "@/lib/errors";
 import { formatCnpj } from "@/lib/validation/cnpj";
 import { dateToDateOnly, formatDateTime } from "@/lib/utils/dates";
@@ -30,6 +32,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
     throw e;
   }
   const podeEditar = can(user, "clientes:gerenciar");
+  const resumo = can(user, "medicao:ver") ? await getClientSummary(getScope(user), id) : null;
 
   const campos: Array<[string, string | null]> = [
     ["Razão social", cliente.legalName],
@@ -76,6 +79,13 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
           </dl>
         </CardContent>
       </Card>
+      {resumo ? (
+        <MedicoesResumoCard
+          clienteId={cliente.id}
+          resumo={resumo}
+          mostrarValores={can(user, "relatorios:financeiro")}
+        />
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-2">
         <ContatosCard clienteId={cliente.id} contatos={cliente.contacts} podeEditar={podeEditar} />
         <ContratosCard
