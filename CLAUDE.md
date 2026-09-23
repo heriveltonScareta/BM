@@ -39,8 +39,10 @@ lib/services    regras de negócio: status-machine, calculation, audit, measurem
                 measurement (criação, itens, transições, timeline), measurement-dto, client, auth…
 lib/validation  schemas Zod compartilhados (cnpj, money, common, auth, client, measurement, locale)
 lib/email       adapter (dev grava em /tmp/bm-emails; smtp por env)
-lib/storage     adapter (local em ./storage; s3 esqueleto)
-lib/pdf         boletim (Fase 3)     lib/excel   import/export (Fase 3)
+lib/pdf         boletim.tsx (react-pdf), data.ts (BoletimData a partir da medição ou de um snapshot),
+                render.ts, extenso.ts, fonts/ (Inter, OFL)
+lib/excel       columns.ts (contrato da planilha), template.ts, import.ts (parser + validação), export.ts
+lib/storage     adapter (local em ./storage; s3 esqueleto), file-type.ts (magic bytes)
 prisma/         schema, migrations, seed.ts       tests/  unit, integration, e2e, setup, fixtures
 ```
 
@@ -59,6 +61,9 @@ prisma/         schema, migrations, seed.ts       tests/  unit, integration, e2e
   excluir, reordenar) é uma chamada à API que devolve `{ item, totals }`; a UI só exibe prévia.
 - **Auditoria de entidades filhas:** gravar `measurementId` dentro de `before/after` para a timeline
   da medição encontrar o evento.
+- **Uploads:** validar extensão, tipo real (`detectFileType`) e tamanho antes de qualquer parse.
+- **PDF:** sempre por `renderBoletimPdf(BoletimData)`; a Fase 4 alimenta com o snapshot da versão
+  (`boletimDataFromSnapshot`) e o bloco de evidências da assinatura. Nunca a palavra "certificado".
 - **API:** todo route handler usa `withApi()` e começa com `requireSession()`/`requireAction()`.
   Erros: lançar `AppError`/`NotFoundError`/`ForbiddenError`/`ValidationError`/`TransitionError`.
 - **Validação:** um schema Zod em `lib/validation`, usado no formulário (client) e na rota (server).
