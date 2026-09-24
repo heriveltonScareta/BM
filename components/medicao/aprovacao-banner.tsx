@@ -26,7 +26,7 @@ export interface AprovacaoInfo {
     signerName: string;
     signerEmail: string;
     signedAt: string;
-    ipAddress: string;
+    ipAddress: string | null;
     documentHash: string;
     version: number;
     signedDocumentId: string | null;
@@ -73,7 +73,7 @@ export function AprovacaoBanner({
     tone = "border-status-green/30 bg-status-green-bg";
     Icon = FileCheck2;
     titulo = `Assinado eletronicamente por ${signature.signerName} (${signature.signerEmail}) em ${formatDateTimeWithZone(signature.signedAt)}`;
-    descricao = `Versão ${signature.version} · IP ${signature.ipAddress} · SHA-256 ${signature.documentHash.slice(0, 16)}…`;
+    descricao = `Versão ${signature.version}${signature.ipAddress ? ` · IP ${signature.ipAddress}` : ""} · SHA-256 ${signature.documentHash.slice(0, 16)}…`;
   } else if (status === S.APROVADO && request) {
     tone = "border-status-green/30 bg-status-green-bg";
     Icon = CheckCircle2;

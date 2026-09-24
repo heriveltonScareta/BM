@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { InvoiceStatus, MeasurementStatus as S } from "@/lib/db/generated/enums";
 import type { Scope } from "@/lib/auth/scope";
 import type { SessionUser } from "@/lib/auth/rbac";
-import { AppError, NotFoundError } from "@/lib/errors";
+import { AppError, ConflictError, NotFoundError } from "@/lib/errors";
 import { audit, type AuditActor } from "@/lib/services/audit.service";
 import { assertTransition } from "@/lib/services/status-machine";
 import { transitionMeasurement } from "@/lib/services/measurement.service";
@@ -72,7 +72,9 @@ export async function attachInvoice(
   else if (!["ADMIN", "FINANCEIRO"].includes(user.role))
     throw new AppError("Você não tem permissão para esta ação.", 403, "FORBIDDEN");
 
-  const existing = await prisma.invoice.findUnique({ where: { measurementId: id } });
+  const previous = await prisma.invoice.findUnique({ where: { measurementId: id } });
+  // NF cancelada por estorno nao vale como "NF existente": o novo ciclo exige uma NF completa
+  const existing = previous && previous.status !== InvoiceStatus.CANCELADA ? previous : null;
   if (!existing && (!files.pdf || !files.xml)) {
     throw new AppError("Envie o PDF e o XML da nota fiscal.", 422, "VALIDATION_ERROR", [
       ...(!files.pdf ? [{ path: "pdf", message: "Envie o PDF da nota fiscal." }] : []),
@@ -135,9 +137,15 @@ export async function attachInvoice(
     };
     const invoice = existing
       ? await tx.invoice.update({ where: { id: existing.id }, data: invoiceData })
-      : await tx.invoice.create({
-          data: { ...invoiceData, measurementId: id, status: InvoiceStatus.EMITIDA },
-        });
+      : previous
+        ? // reaproveita o registro (measurementId e unico), mas como uma NF nova: emitida, sem envio
+          await tx.invoice.update({
+            where: { id: previous.id },
+            data: { ...invoiceData, status: InvoiceStatus.EMITIDA, sentAt: null },
+          })
+        : await tx.invoice.create({
+            data: { ...invoiceData, measurementId: id, status: InvoiceStatus.EMITIDA },
+          });
     await audit(tx, {
       entity: "Invoice",
       entityId: invoice.id,
@@ -161,7 +169,12 @@ export async function attachInvoice(
       },
     });
     if (m.status === S.LIBERADO_FATURAMENTO) {
-      await tx.measurement.update({ where: { id }, data: { status: S.NF_ANEXADA } });
+      const updated = await tx.measurement.updateMany({
+        where: { id, status: S.LIBERADO_FATURAMENTO },
+        data: { status: S.NF_ANEXADA },
+      });
+      if (updated.count !== 1)
+        throw new ConflictError("A medição foi alterada por outro usuário. Recarregue a página.");
       await audit(tx, {
         entity: "Measurement",
         entityId: id,
@@ -197,9 +210,17 @@ export async function updateInvoiceStatus(
 ) {
   if (!["ADMIN", "FINANCEIRO"].includes(user.role))
     throw new AppError("Você não tem permissão para esta ação.", 403, "FORBIDDEN");
-  await requireMeasurement(scope, id);
+  const m = await requireMeasurement(scope, id);
   const before = await prisma.invoice.findUnique({ where: { measurementId: id } });
   if (!before) throw new NotFoundError("Nota fiscal não encontrada.");
+  if (m.status !== S.NF_ANEXADA && m.status !== S.FATURADO)
+    throw new AppError(
+      "O status da nota fiscal só pode ser alterado com a NF anexada ou a medição faturada.",
+      409,
+      "INVALID_STATE",
+    );
+  if (before.status === InvoiceStatus.CANCELADA)
+    throw new AppError("Uma nota fiscal cancelada não pode voltar a valer.", 409, "INVALID_STATE");
   return prisma.$transaction(async (tx) => {
     const after = await tx.invoice.update({
       where: { id: before.id },
@@ -237,13 +258,26 @@ export async function updateInvoiceStatus(
 /** Dados de faturamento da medicao (NF, documentos da NF e alerta de divergencia). */
 export async function getBillingInfo(scope: Scope, id: string) {
   const m = await requireMeasurement(scope, id);
-  const invoice = await prisma.invoice.findUnique({
-    where: { measurementId: id },
-    include: { pdfDocument: true, xmlDocument: true },
-  });
-  const signature = await prisma.signature.findFirst({
-    where: { measurementId: id, version: { version: m.currentVersion } },
-  });
+  return billingInfoFor(m);
+}
+
+/** Variante para quem ja carregou a medicao (evita repetir a busca com escopo). */
+export async function billingInfoFor(m: {
+  id: string;
+  status: S;
+  totalAmount: { toString(): string };
+  currentVersion: number;
+}) {
+  const id = m.id;
+  const [invoice, signature] = await Promise.all([
+    prisma.invoice.findUnique({
+      where: { measurementId: id },
+      include: { pdfDocument: true, xmlDocument: true },
+    }),
+    prisma.signature.findFirst({
+      where: { measurementId: id, version: { version: m.currentVersion } },
+    }),
+  ]);
   return {
     status: m.status,
     totalAmount: m.totalAmount.toString(),

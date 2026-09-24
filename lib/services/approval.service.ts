@@ -3,7 +3,13 @@ import { ApprovalDecision, MeasurementStatus as S } from "@/lib/db/generated/enu
 import type { Prisma } from "@/lib/db/generated/client";
 import type { Scope } from "@/lib/auth/scope";
 import type { SessionUser } from "@/lib/auth/rbac";
-import { AppError, NotFoundError, TransitionError } from "@/lib/errors";
+import {
+  AppError,
+  ConflictError,
+  NotFoundError,
+  TransitionError,
+  ValidationError,
+} from "@/lib/errors";
 import { audit, portalActor, SYSTEM_ACTOR, type AuditActor } from "@/lib/services/audit.service";
 import { assertTransition } from "@/lib/services/status-machine";
 import { buildSnapshot, type MeasurementSnapshot } from "@/lib/services/snapshot";
@@ -185,10 +191,21 @@ export async function sendToClient(
         sentAt: now,
       },
     });
-    await tx.measurement.update({
-      where: { id },
+    // compare-and-set: a medicao nao pode ter mudado (status, versao ou itens) desde a leitura
+    // do snapshot; se mudou, a versao congelada nao refletiria o que esta gravado.
+    const updated = await tx.measurement.updateMany({
+      where: {
+        id,
+        status: m.status,
+        currentVersion: m.currentVersion,
+        updatedAt: detail.updatedAt,
+      },
       data: { status: S.ENVIADO_AO_CLIENTE, currentVersion: version },
     });
+    if (updated.count !== 1)
+      throw new ConflictError(
+        "A medição foi alterada enquanto o envio era preparado. Recarregue a página e envie novamente.",
+      );
     await audit(tx, {
       entity: "MeasurementVersion",
       entityId: v.id,
@@ -271,6 +288,13 @@ export async function resendApproval(
     orderBy: { sentAt: "desc" },
   });
   const contact = await resolveApprover(m.clientId, options.contactId ?? undefined);
+  if (m.status === S.APROVADO && previous && previous.sentToEmail !== contact.email) {
+    // a decisao registrada pertence a quem aprovou; um novo contato nao pode herda-la
+    throw new ValidationError(
+      `Após a aprovação, o link só pode ser reenviado para quem aprovou (${previous.sentToName}).`,
+      [{ path: "contactId", message: "Escolha o contato que aprovou a medição." }],
+    );
+  }
   const now = new Date();
   const token = generateToken();
   const expiresAt = new Date(now.getTime() + config.approval.tokenTtlDays * 24 * 60 * 60 * 1000);
@@ -421,14 +445,7 @@ async function toView(req: RequestRow): Promise<PortalView> {
       where: { measurementId: req.measurementId, versionId: req.versionId },
       orderBy: { signedAt: "desc" },
     }));
-  let signedDocumentId: string | null = null;
-  if (signature) {
-    const doc = await prisma.document.findFirst({
-      where: { measurementId: req.measurementId, type: "BOLETIM_ASSINADO", deletedAt: null },
-      orderBy: { createdAt: "desc" },
-    });
-    signedDocumentId = doc?.id ?? null;
-  }
+  const signedDocumentId = signature?.signedDocumentId ?? null;
   return {
     state: stateOf(req),
     request: {
@@ -478,10 +495,12 @@ export async function openPortal(token: string, meta: RequestMeta = {}): Promise
         req.version.version === req.measurement.currentVersion
       ) {
         assertTransition(S.ENVIADO_AO_CLIENTE, S.EM_APROVACAO, "SISTEMA");
-        await tx.measurement.update({
-          where: { id: req.measurementId },
+        // compare-and-set: duas abas abertas ao mesmo tempo registram a abertura uma so vez
+        const updated = await tx.measurement.updateMany({
+          where: { id: req.measurementId, status: S.ENVIADO_AO_CLIENTE },
           data: { status: S.EM_APROVACAO },
         });
+        if (updated.count !== 1) return;
         await audit(tx, {
           entity: "Measurement",
           entityId: req.measurementId,
@@ -519,8 +538,9 @@ export async function decidePortal(
   const now = new Date();
   const actor = portalActor(req.sentToEmail, req.sentToName, meta);
   await prisma.$transaction(async (tx) => {
-    await tx.approvalRequest.update({
-      where: { id: req.id },
+    // uso unico garantido no banco: dois cliques simultaneos registram uma decisao so
+    const consumed = await tx.approvalRequest.updateMany({
+      where: { id: req.id, usedAt: null, decision: null },
       data: {
         decision:
           decision === "APROVAR" ? ApprovalDecision.APPROVED : ApprovalDecision.CHANGES_REQUESTED,
@@ -530,7 +550,14 @@ export async function decidePortal(
         openedAt: req.openedAt ?? now,
       },
     });
-    await tx.measurement.update({ where: { id: req.measurementId }, data: { status: to } });
+    if (consumed.count !== 1)
+      throw new AppError("Este link já foi utilizado para registrar a decisão.", 409, "TOKEN_USED");
+    const updated = await tx.measurement.updateMany({
+      where: { id: req.measurementId, status: req.measurement.status },
+      data: { status: to },
+    });
+    if (updated.count !== 1)
+      throw new AppError("Esta medição não está mais aguardando decisão.", 409, "INVALID_STATE");
     await audit(tx, {
       entity: "Measurement",
       entityId: req.measurementId,
@@ -578,6 +605,13 @@ export async function signPortal(
   const actor = portalActor(req.sentToEmail, input.signerName, meta);
 
   await prisma.$transaction(async (tx) => {
+    // compare-and-set: uma unica assinatura por versao aprovada, mesmo com cliques simultaneos
+    const updated = await tx.measurement.updateMany({
+      where: { id: req.measurementId, status: req.measurement.status },
+      data: { status: S.ASSINADO },
+    });
+    if (updated.count !== 1)
+      throw new AppError("Esta medição não está aguardando assinatura.", 409, "INVALID_STATE");
     const sig = await tx.signature.create({
       data: {
         measurementId: req.measurementId,
@@ -603,7 +637,7 @@ export async function signPortal(
       },
       actor,
     );
-    await tx.measurement.update({ where: { id: req.measurementId }, data: { status: S.ASSINADO } });
+    await tx.signature.update({ where: { id: sig.id }, data: { signedDocumentId: doc.id } });
     await audit(tx, {
       entity: "Signature",
       entityId: sig.id,
@@ -655,11 +689,12 @@ async function getVersionPdfBuffer(
 export async function getPortalPdf(token: string): Promise<{ data: Buffer; fileName: string }> {
   const req = await findRequestByToken(token);
   const snapshot = req.version.snapshot as unknown as MeasurementSnapshot;
-  const signed = await prisma.document.findFirst({
-    where: { measurementId: req.measurementId, type: "BOLETIM_ASSINADO", deletedAt: null },
-    orderBy: { createdAt: "desc" },
+  const signature = await prisma.signature.findFirst({
+    where: { measurementId: req.measurementId, versionId: req.versionId },
+    include: { signedDocument: true },
   });
-  if (signed && stateOf(req) === "ASSINADO") {
+  const signed = signature?.signedDocument;
+  if (signed && !signed.deletedAt && stateOf(req) === "ASSINADO") {
     return { data: await getStorage().get(signed.storageKey), fileName: signed.fileName };
   }
   return {
@@ -672,8 +707,13 @@ export async function getPortalPdf(token: string): Promise<{ data: Buffer; fileN
 // versoes (area interna)
 // ---------------------------------------------------------------------------
 
-export async function listVersions(scope: Scope, id: string) {
+export async function listVersions(scope: Scope, id: string, options: { evidence?: boolean } = {}) {
   await requireMeasurement(scope, id);
+  return listVersionsFor(id, options);
+}
+
+/** Variante para quem ja verificou o escopo da medicao. */
+export async function listVersionsFor(id: string, options: { evidence?: boolean } = {}) {
   const versions = await prisma.measurementVersion.findMany({
     where: { measurementId: id },
     orderBy: { version: "desc" },
@@ -718,7 +758,10 @@ export async function listVersions(scope: Scope, id: string) {
       laborCount: snapshot.laborItems.length,
       equipmentCount: snapshot.equipmentItems.length,
       requests: v.approvalRequests,
-      signatures: v.signatures,
+      signatures: v.signatures.map((sig) => ({
+        ...sig,
+        ipAddress: options.evidence ? sig.ipAddress : null,
+      })),
     };
   });
 }
@@ -753,24 +796,33 @@ export async function compareVersions(scope: Scope, id: string, a: number, b: nu
 }
 
 /** Informacoes da solicitacao vigente para a tela da medicao. */
-export async function getApprovalStatus(scope: Scope, id: string) {
+export async function getApprovalStatus(
+  scope: Scope,
+  id: string,
+  options: { evidence?: boolean } = {},
+) {
   const m = await requireMeasurement(scope, id);
-  const request = await prisma.approvalRequest.findFirst({
-    where: { measurementId: id },
-    orderBy: { sentAt: "desc" },
-    include: { version: { select: { version: true } } },
-  });
-  const signature = await prisma.signature.findFirst({
-    where: { measurementId: id },
-    orderBy: { signedAt: "desc" },
-    include: { version: { select: { version: true } } },
-  });
-  const signedDoc = signature
-    ? await prisma.document.findFirst({
-        where: { measurementId: id, type: "BOLETIM_ASSINADO", deletedAt: null },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
+  return approvalStatusFor(m, options);
+}
+
+/** Variante para quem ja carregou a medicao (evita repetir a busca com escopo). */
+export async function approvalStatusFor(
+  m: { id: string; currentVersion: number },
+  options: { evidence?: boolean } = {},
+) {
+  const id = m.id;
+  const [request, signature] = await Promise.all([
+    prisma.approvalRequest.findFirst({
+      where: { measurementId: id },
+      orderBy: { sentAt: "desc" },
+      include: { version: { select: { version: true } } },
+    }),
+    prisma.signature.findFirst({
+      where: { measurementId: id },
+      orderBy: { signedAt: "desc" },
+      include: { version: { select: { version: true } } },
+    }),
+  ]);
   return {
     currentVersion: m.currentVersion,
     request: request
@@ -792,10 +844,11 @@ export async function getApprovalStatus(scope: Scope, id: string) {
           signerName: signature.signerName,
           signerEmail: signature.signerEmail,
           signedAt: signature.signedAt,
-          ipAddress: signature.ipAddress,
+          // evidencias forenses (IP) so para quem audita
+          ipAddress: options.evidence ? signature.ipAddress : null,
           documentHash: signature.documentHash,
           version: signature.version.version,
-          signedDocumentId: signedDoc?.id ?? null,
+          signedDocumentId: signature.signedDocumentId,
         }
       : null,
   };

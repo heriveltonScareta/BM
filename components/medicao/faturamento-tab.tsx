@@ -101,11 +101,15 @@ export function FaturamentoTab({
   const [editarNf, setEditarNf] = useState(false);
   const idx = ETAPAS.findIndex((e) => e.status === info.status);
 
-  if (idx < 0 && !info.invoice) {
+  if (idx < 0) {
     return (
       <EstadoVazio
         titulo="Faturamento ainda não iniciado"
-        descricao="O faturamento começa após a assinatura eletrônica do cliente."
+        descricao={
+          info.invoice
+            ? `A NF ${info.invoice.number} do ciclo anterior foi cancelada pelo estorno. Uma nova nota fiscal será exigida após a nova assinatura e liberação.`
+            : "O faturamento começa após a assinatura eletrônica do cliente."
+        }
         className="py-8"
       />
     );

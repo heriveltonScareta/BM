@@ -1,8 +1,16 @@
-import { prisma, type Tx } from "@/lib/db/prisma";
+import Decimal from "decimal.js";
+import { prisma, type Db, type Tx } from "@/lib/db/prisma";
 import { MeasurementStatus, Role } from "@/lib/db/generated/enums";
 import type { Scope } from "@/lib/auth/scope";
 import type { SessionUser } from "@/lib/auth/rbac";
-import { AppError, NotFoundError, TransitionError, ValidationError } from "@/lib/errors";
+import {
+  AppError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  TransitionError,
+  ValidationError,
+} from "@/lib/errors";
 import {
   audit,
   type AuditActor,
@@ -67,10 +75,78 @@ export async function getMeasurement(scope: Scope, id: string) {
   return m;
 }
 
-export async function getMeasurementTimeline(scope: Scope, id: string) {
+export interface TimelineOptions {
+  /** Auditoria completa (IP, id do ator, before/after integrais): so `auditoria:ver`. */
+  full?: boolean;
+  /** Oculta o e-mail dos usuarios internos no rotulo do ator (perfil CLIENTE). */
+  hideActorEmail?: boolean;
+}
+
+/** Chaves de before/after visiveis fora da auditoria completa (o que a timeline exibe). */
+const PUBLIC_AUDIT_KEYS = new Set([
+  "status",
+  "motivo",
+  "version",
+  "number",
+  "code",
+  "role",
+  "name",
+  "quantity",
+  "unitPrice",
+  "totalPrice",
+  "totalAmount",
+  "nf",
+  "series",
+  "amount",
+  "issueDate",
+  "divergencia",
+  "ordem",
+  "tipo",
+  "fileName",
+  "type",
+  "duplicadoDe",
+  "reenvio",
+  "signerName",
+  "signerEmail",
+  "measurementId",
+]);
+
+function pickPublic(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(payload as Record<string, unknown>))
+    if (PUBLIC_AUDIT_KEYS.has(k)) out[k] = v;
+  return out;
+}
+
+/** "Nome <email>" -> "Nome" */
+export function actorLabelWithoutEmail(label: string): string {
+  return label.replace(/\s*<[^>]*>\s*$/, "");
+}
+
+export async function getMeasurementTimeline(
+  scope: Scope,
+  id: string,
+  options: TimelineOptions = {},
+) {
   const m = await findMeasurementBasic(prisma, scope, id);
   if (!m) throw new NotFoundError("Medição não encontrada.");
-  return listMeasurementAudit(prisma, id);
+  return timelineFor(id, options);
+}
+
+/** Variante para quem ja verificou o escopo da medicao. */
+export async function timelineFor(id: string, options: TimelineOptions = {}) {
+  const entries = await listMeasurementAudit(prisma, id);
+  if (options.full) return entries;
+  // fora da auditoria completa: sem IP, sem id do ator e so os campos que a timeline mostra
+  return entries.map((e) => ({
+    ...e,
+    ip: null,
+    actorUserId: null,
+    actorLabel: options.hideActorEmail ? actorLabelWithoutEmail(e.actorLabel) : e.actorLabel,
+    before: pickPublic(e.before),
+    after: pickPublic(e.after),
+  }));
 }
 
 /** Totais persistidos da medicao (para responder as operacoes de item). */
@@ -226,6 +302,10 @@ export async function updateMeasurementHeader(
       },
     });
     const totals = await recalculateTotals(tx, id);
+    if (new Decimal(totals.totalAmount).lt(0))
+      throw new ValidationError("Os descontos não podem ser maiores que o subtotal.", [
+        { path: "discountAmount", message: "Os descontos deixariam o total negativo." },
+      ]);
     await audit(tx, {
       entity: "Measurement",
       entityId: id,
@@ -312,6 +392,9 @@ interface ItemRecord {
 interface ItemTable {
   findOne(measurementId: string, id: string): Promise<ItemRow | null>;
   listIds(measurementId: string): Promise<Array<{ id: string; sortOrder: number }>>;
+  maxSortOrder(measurementId: string): Promise<number | null>;
+  /** Desloca em `delta` o sortOrder de todos os itens com sortOrder > `after` (uma consulta). */
+  shift(measurementId: string, after: number, delta: 1 | -1): Promise<void>;
   create(measurementId: string, data: ItemRecord): Promise<ItemRow>;
   update(id: string, data: Partial<ItemRecord>): Promise<ItemRow>;
   remove(id: string): Promise<void>;
@@ -327,6 +410,15 @@ function itemTable(tx: Tx, kind: ItemKind): ItemTable {
           orderBy: { sortOrder: "asc" },
           select: { id: true, sortOrder: true },
         }),
+      maxSortOrder: async (measurementId) =>
+        (await tx.laborItem.aggregate({ where: { measurementId }, _max: { sortOrder: true } }))._max
+          .sortOrder,
+      shift: async (measurementId, after, delta) => {
+        await tx.laborItem.updateMany({
+          where: { measurementId, sortOrder: { gt: after } },
+          data: { sortOrder: delta > 0 ? { increment: 1 } : { decrement: 1 } },
+        });
+      },
       create: (measurementId, { name: _n, ...data }) =>
         tx.laborItem.create({ data: { ...data, role: data.role ?? "", measurementId } }),
       update: (id, { name: _n, ...data }) => tx.laborItem.update({ where: { id }, data }),
@@ -343,6 +435,15 @@ function itemTable(tx: Tx, kind: ItemKind): ItemTable {
         orderBy: { sortOrder: "asc" },
         select: { id: true, sortOrder: true },
       }),
+    maxSortOrder: async (measurementId) =>
+      (await tx.equipmentItem.aggregate({ where: { measurementId }, _max: { sortOrder: true } }))
+        ._max.sortOrder,
+    shift: async (measurementId, after, delta) => {
+      await tx.equipmentItem.updateMany({
+        where: { measurementId, sortOrder: { gt: after } },
+        data: { sortOrder: delta > 0 ? { increment: 1 } : { decrement: 1 } },
+      });
+    },
     create: (measurementId, { role: _r, ...data }) =>
       tx.equipmentItem.create({ data: { ...data, name: data.name ?? "", measurementId } }),
     update: (id, { role: _r, ...data }) => tx.equipmentItem.update({ where: { id }, data }),
@@ -417,9 +518,8 @@ export async function addItem(
   assertEditable(m.status);
   return prisma.$transaction(async (tx) => {
     const t = itemTable(tx, kind);
-    const rows = await t.listIds(measurementId);
-    const sortOrder = rows.length ? Math.max(...rows.map((r) => r.sortOrder)) + 1 : 0;
-    const item = await t.create(measurementId, itemRecord(kind, data, sortOrder));
+    const max = await t.maxSortOrder(measurementId);
+    const item = await t.create(measurementId, itemRecord(kind, data, max === null ? 0 : max + 1));
     const totals = await recalculateTotals(tx, measurementId);
     await logItem(tx, kind, measurementId, item.id, "ITEM_CRIADO", actor, undefined, item);
     return { item: plain(item), totals };
@@ -461,9 +561,8 @@ export async function deleteItem(
     const before = await t.findOne(measurementId, itemId);
     if (!before) throw new NotFoundError("Item não encontrado.");
     await t.remove(itemId);
-    const rest = await t.listIds(measurementId);
-    for (const [i, r] of rest.entries())
-      if (r.sortOrder !== i) await t.update(r.id, { sortOrder: i });
+    // fecha o espaco em uma unica consulta (antes: um update por item restante)
+    await t.shift(measurementId, before.sortOrder, -1);
     const totals = await recalculateTotals(tx, measurementId);
     await logItem(tx, kind, measurementId, itemId, "ITEM_EXCLUIDO", actor, before, undefined);
     return { totals };
@@ -483,13 +582,8 @@ export async function duplicateItem(
     const t = itemTable(tx, kind);
     const source = await t.findOne(measurementId, itemId);
     if (!source) throw new NotFoundError("Item não encontrado.");
-    const rows = await t.listIds(measurementId);
-    // abre espaco logo apos o item de origem (do maior para o menor, evitando colisao)
-    for (const r of rows
-      .filter((r) => r.sortOrder > source.sortOrder)
-      .sort((a, b) => b.sortOrder - a.sortOrder)) {
-      await t.update(r.id, { sortOrder: r.sortOrder + 1 });
-    }
+    // abre espaco logo apos o item de origem em uma unica consulta
+    await t.shift(measurementId, source.sortOrder, 1);
     const item = await t.create(measurementId, {
       code: source.code,
       role: source.role,
@@ -551,10 +645,22 @@ export interface TransitionOptions {
   reason?: string;
 }
 
+/** Destinos com fluxo proprio: envio (versao/PDF/token), portal do cliente e anexo de NF. */
+const FLOW_ONLY_TARGETS: readonly MeasurementStatus[] = [
+  MeasurementStatus.ENVIADO_AO_CLIENTE,
+  MeasurementStatus.EM_APROVACAO,
+  MeasurementStatus.APROVADO,
+  MeasurementStatus.CORRECAO_SOLICITADA,
+  MeasurementStatus.ASSINADO,
+  MeasurementStatus.NF_ANEXADA,
+];
+
 /**
- * Transicao generica pela tabela da maquina de estados. Transicoes com efeitos proprios
- * (envio, aprovacao, assinatura, liberacao, NF) tem services dedicados nas fases 4 e 5 e
- * sao recusadas aqui.
+ * Transicao generica pela tabela da maquina de estados, para atores de sessao.
+ * Transicoes com efeitos proprios (envio, aprovacao, correcao, assinatura, NF) tem services
+ * dedicados e sao recusadas aqui; o papel CLIENTE nunca transita por sessao (so pelo portal).
+ * O update e compare-and-set (status lido = status gravado): duas transicoes concorrentes
+ * nao gravam uma por cima da outra.
  */
 export async function transitionMeasurement(
   user: SessionUser,
@@ -565,22 +671,31 @@ export async function transitionMeasurement(
   options: TransitionOptions = {},
 ) {
   const m = await requireMeasurement(scope, id);
+  if (user.role === Role.CLIENTE)
+    throw new ForbiddenError("Aprovação e assinatura são feitas pelo portal do cliente.");
   const transition = assertTransition(m.status, to, user.role);
-  await checkGuards(transition.guards ?? [], m.id, options);
+  if (FLOW_ONLY_TARGETS.includes(to))
+    throw new TransitionError(
+      'Esta transição tem fluxo próprio: use "Enviar ao cliente", o portal do cliente ou o anexo da nota fiscal.',
+    );
 
   const estorno = m.status === MeasurementStatus.FATURADO && to === MeasurementStatus.EM_ELABORACAO;
   return prisma.$transaction(async (tx) => {
-    const after = await tx.measurement.update({
-      where: { id },
+    await checkGuards(tx, transition.guards ?? [], m.id, options);
+    const updated = await tx.measurement.updateMany({
+      where: { id, status: m.status },
       data: {
         status: to,
         canceledAt: to === MeasurementStatus.CANCELADO ? new Date() : m.canceledAt,
       },
     });
+    if (updated.count !== 1)
+      throw new ConflictError("A medição foi alterada por outro usuário. Recarregue a página.");
+    const after = await tx.measurement.findUniqueOrThrow({ where: { id } });
     if (estorno) {
       // a NF faturada deixa de valer para esta medicao; o registro permanece no historico
       const invoice = await tx.invoice.findUnique({ where: { measurementId: id } });
-      if (invoice) {
+      if (invoice && invoice.status !== "CANCELADA") {
         await tx.invoice.update({ where: { id: invoice.id }, data: { status: "CANCELADA" } });
         await audit(tx, {
           entity: "Invoice",
@@ -605,6 +720,7 @@ export async function transitionMeasurement(
 }
 
 async function checkGuards(
+  db: Db,
   guards: readonly TransitionGuard[],
   measurementId: string,
   options: TransitionOptions,
@@ -618,22 +734,30 @@ async function checkGuards(
           ]);
         break;
       case "TEM_ITENS": {
-        const [labor, equipment] = await Promise.all([
-          prisma.laborItem.count({ where: { measurementId } }),
-          prisma.equipmentItem.count({ where: { measurementId } }),
+        const [labor, equipment, m] = await Promise.all([
+          db.laborItem.count({ where: { measurementId } }),
+          db.equipmentItem.count({ where: { measurementId } }),
+          db.measurement.findUniqueOrThrow({
+            where: { id: measurementId },
+            select: { totalAmount: true },
+          }),
         ]);
         if (labor + equipment === 0)
           throw new TransitionError(
             "Inclua ao menos um item de mão de obra ou equipamento antes de prosseguir.",
           );
+        if (m.totalAmount.lt(0))
+          throw new TransitionError(
+            "O total da medição está negativo (descontos maiores que o subtotal). Ajuste antes de prosseguir.",
+          );
         break;
       }
       case "TEM_ASSINATURA": {
-        const m = await prisma.measurement.findUniqueOrThrow({
+        const m = await db.measurement.findUniqueOrThrow({
           where: { id: measurementId },
           select: { currentVersion: true },
         });
-        const signature = await prisma.signature.findFirst({
+        const signature = await db.signature.findFirst({
           where: { measurementId, version: { version: m.currentVersion } },
         });
         if (!signature)
@@ -643,10 +767,18 @@ async function checkGuards(
         break;
       }
       case "TEM_NF_COMPLETA": {
-        const invoice = await prisma.invoice.findUnique({ where: { measurementId } });
-        if (!invoice || !invoice.number || !invoice.issueDate || invoice.amount.lte(0)) {
+        const invoice = await db.invoice.findUnique({ where: { measurementId } });
+        if (
+          !invoice ||
+          invoice.status === "CANCELADA" ||
+          !invoice.number ||
+          !invoice.issueDate ||
+          invoice.amount.lte(0) ||
+          !invoice.pdfDocumentId ||
+          !invoice.xmlDocumentId
+        ) {
           throw new TransitionError(
-            "Anexe a nota fiscal com número, data de emissão e valor antes de faturar.",
+            "Anexe a nota fiscal (PDF e XML) com número, data de emissão e valor antes de faturar.",
           );
         }
         break;

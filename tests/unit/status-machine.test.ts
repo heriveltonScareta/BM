@@ -6,7 +6,7 @@ import {
   allowedTransitions,
   assertTransition,
   canTransition,
-  createsNewVersion,
+  reopensForRevision,
   isEditable,
   type Actor,
 } from "@/lib/services/status-machine";
@@ -45,9 +45,9 @@ describe("máquina de estados — tabela da Seção 5", () => {
     expectAllowed(S.EM_APROVACAO, S.APROVADO, ["CLIENTE"]);
     expectAllowed(S.EM_APROVACAO, S.CORRECAO_SOLICITADA, ["CLIENTE"]);
   });
-  it("CORRECAO_SOLICITADA -> EM_ELABORACAO cria nova versão", () => {
+  it("CORRECAO_SOLICITADA -> EM_ELABORACAO reabre para revisão", () => {
     expectAllowed(S.CORRECAO_SOLICITADA, S.EM_ELABORACAO, ["ADMIN", "OPERACIONAL"]);
-    expect(createsNewVersion(S.CORRECAO_SOLICITADA, S.EM_ELABORACAO)).toBe(true);
+    expect(reopensForRevision(S.CORRECAO_SOLICITADA, S.EM_ELABORACAO)).toBe(true);
   });
   it("APROVADO -> ASSINADO somente pelo cliente", () => {
     expectAllowed(S.APROVADO, S.ASSINADO, ["CLIENTE"]);
@@ -59,7 +59,7 @@ describe("máquina de estados — tabela da Seção 5", () => {
   });
   it("FATURADO só sai via estorno do Admin (nova versão em EM_ELABORACAO)", () => {
     expectAllowed(S.FATURADO, S.EM_ELABORACAO, ["ADMIN"]);
-    expect(createsNewVersion(S.FATURADO, S.EM_ELABORACAO)).toBe(true);
+    expect(reopensForRevision(S.FATURADO, S.EM_ELABORACAO)).toBe(true);
     expect(TRANSITIONS.FATURADO.find((t) => t.to === S.EM_ELABORACAO)?.guards).toContain(
       "EXIGE_MOTIVO",
     );

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError, type z } from "zod";
 import { AppError } from "@/lib/errors";
+import { Prisma } from "@/lib/db/generated/client";
 import type { SessionUser } from "@/lib/auth/rbac";
 import { actorFromUser, type AuditActor } from "@/lib/services/audit.service";
 
@@ -31,6 +32,27 @@ export function errorResponse(error: unknown): NextResponse<ApiErrorBody> {
       { error: { code: error.code, message: error.message, details: error.details } },
       { status: error.status },
     );
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // P2002: violacao de unicidade em operacao concorrente (ex.: duas assinaturas ou duas versoes)
+    if (error.code === "P2002")
+      return NextResponse.json(
+        {
+          error: {
+            code: "CONFLICT",
+            message: "Esta operação já foi realizada por outra requisição. Recarregue a página.",
+          },
+        },
+        { status: 409 },
+      );
+    // P2020: valor fora do intervalo da coluna (ex.: numero maior que o permitido)
+    if (error.code === "P2020")
+      return NextResponse.json(
+        {
+          error: { code: "VALIDATION_ERROR", message: "Valor numérico fora do limite permitido." },
+        },
+        { status: 422 },
+      );
   }
   console.error("[api] erro não tratado:", error);
   return NextResponse.json(
@@ -95,4 +117,9 @@ export async function readJsonOptional<T = Record<string, unknown>>(req: Request
   } catch {
     throw new AppError("Corpo da requisição inválido (JSON esperado).", 400, "BAD_JSON");
   }
+}
+
+/** Corpo de resposta binario sem copiar o Buffer (view sobre a mesma memoria). */
+export function bufferBody(data: Buffer | Uint8Array): BodyInit {
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as Uint8Array<ArrayBuffer>;
 }

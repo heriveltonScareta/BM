@@ -99,8 +99,11 @@ export const CLIENT_VISIBLE_STATUSES: readonly MeasurementStatus[] = [
   S.FATURADO,
 ];
 
-/** Transicoes que criam uma nova versao da medicao. */
-export function createsNewVersion(from: MeasurementStatus, to: MeasurementStatus): boolean {
+/**
+ * Transicoes que reabrem a edicao para uma revisao (correcao solicitada ou estorno).
+ * A nova versao em si so e congelada no proximo envio ao cliente.
+ */
+export function reopensForRevision(from: MeasurementStatus, to: MeasurementStatus): boolean {
   return (from === S.CORRECAO_SOLICITADA || from === S.FATURADO) && to === S.EM_ELABORACAO;
 }
 
