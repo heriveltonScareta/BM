@@ -48,6 +48,8 @@ interface DataTableProps<T> {
   renderCard?: (row: T) => React.ReactNode;
   /** Torna a linha clicavel (navega para a URL). */
   getRowHref?: (row: T) => string;
+  /** Chave estavel da linha (padrao: `id` quando existir). */
+  getRowId?: (row: T) => string;
   emptyState: React.ReactNode;
   /** Linha(s) de rodape (ex.: totais); recebe `<TableRow>`s. */
   footer?: React.ReactNode;
@@ -57,6 +59,21 @@ interface DataTableProps<T> {
 
 const PAGE_SIZES = [10, 20, 50, 100];
 
+/** Metadados de coluna: alinhamento, clique isolado e ocultacao em telas estreitas. */
+export interface ColumnMeta {
+  align?: "right";
+  stop?: boolean;
+  /** Coluna secundaria: escondida abaixo do breakpoint (a linha continua clicavel). */
+  hideBelow?: "lg" | "xl" | "2xl";
+}
+
+export const HIDE_BELOW: Record<NonNullable<ColumnMeta["hideBelow"]> | "none", string> = {
+  none: "",
+  lg: "hidden lg:table-cell",
+  xl: "hidden xl:table-cell",
+  "2xl": "hidden 2xl:table-cell",
+};
+
 export function DataTable<T>({
   columns,
   data,
@@ -65,6 +82,7 @@ export function DataTable<T>({
   order,
   renderCard,
   getRowHref,
+  getRowId,
   emptyState,
   footer,
   caption,
@@ -72,12 +90,14 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const router = useRouter();
   const { setParams, isPending } = useUrlState();
+  const rowId = (row: T, i: number) => getRowId?.(row) ?? (row as { id?: string }).id ?? String(i);
   // TanStack Table v8 devolve funcoes nao memoizaveis; o React Compiler pula este componente
   // (comportamento esperado pela biblioteca). Sem impacto funcional.
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,
+    getRowId: (row, i) => rowId(row, i),
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
     manualSorting: true,
@@ -101,7 +121,7 @@ export function DataTable<T>({
       {renderCard ? (
         <ul className="space-y-2 md:hidden" aria-label={caption}>
           {data.map((row, i) => (
-            <li key={i}>{renderCard(row)}</li>
+            <li key={rowId(row, i)}>{renderCard(row)}</li>
           ))}
         </ul>
       ) : null}
@@ -120,13 +140,14 @@ export function DataTable<T>({
                 {hg.headers.map((header) => {
                   const canSort = header.column.getCanSort() && !!pagination;
                   const active = sort === header.column.id;
-                  const meta = header.column.columnDef.meta as { align?: "right" } | undefined;
+                  const meta = header.column.columnDef.meta as ColumnMeta | undefined;
                   return (
                     <TableHead
                       key={header.id}
                       className={cn(
                         "h-9 whitespace-nowrap",
                         meta?.align === "right" && "text-right",
+                        HIDE_BELOW[meta?.hideBelow ?? "none"],
                       )}
                       aria-sort={
                         active ? (order === "asc" ? "ascending" : "descending") : undefined
@@ -177,12 +198,15 @@ export function DataTable<T>({
                 }}
               >
                 {row.getVisibleCells().map((cell) => {
-                  const meta = cell.column.columnDef.meta as
-                    { align?: "right"; stop?: boolean } | undefined;
+                  const meta = cell.column.columnDef.meta as ColumnMeta | undefined;
                   return (
                     <TableCell
                       key={cell.id}
-                      className={cn("py-1.5", meta?.align === "right" && "text-right tabular")}
+                      className={cn(
+                        "py-1.5",
+                        meta?.align === "right" && "text-right tabular",
+                        HIDE_BELOW[meta?.hideBelow ?? "none"],
+                      )}
                       onClick={meta?.stop ? (e) => e.stopPropagation() : undefined}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

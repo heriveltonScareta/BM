@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import Decimal from "decimal.js";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { DataTable, type DataTablePagination } from "@/components/tabelas/data-table";
+import {
+  type ColumnMeta,
+  DataTable,
+  type DataTablePagination,
+  HIDE_BELOW,
+} from "@/components/tabelas/data-table";
 import { SelectUrl } from "@/components/tabelas/filtros";
 import { EstadoVazio } from "@/components/estados";
 import { StatusBadge } from "@/components/medicao/status-badge";
@@ -113,6 +119,7 @@ const COLUNAS: Record<ReportType, ColumnDef<ReportRow, unknown>[]> = {
       id: "frs",
       header: "FRS / PC",
       enableSorting: false,
+      meta: { hideBelow: "xl" },
       cell: ({ row }) => (
         <span className="text-xs">
           {[row.original.frs, row.original.purchaseOrder].filter(Boolean).join(" · ") || "—"}
@@ -146,6 +153,7 @@ const COLUNAS: Record<ReportType, ColumnDef<ReportRow, unknown>[]> = {
       id: "signedAt",
       header: "Assinado em",
       enableSorting: false,
+      meta: { hideBelow: "xl" },
       cell: ({ row }) =>
         row.original.signedAt ? formatTimestampAsDate(row.original.signedAt) : "—",
     },
@@ -163,6 +171,7 @@ const COLUNAS: Record<ReportType, ColumnDef<ReportRow, unknown>[]> = {
       id: "invoiceStatus",
       header: "Status NF",
       enableSorting: false,
+      meta: { hideBelow: "2xl" },
       cell: ({ row }) =>
         row.original.invoiceStatus
           ? INVOICE_STATUS_LABELS[row.original.invoiceStatus as InvoiceStatus]
@@ -172,6 +181,7 @@ const COLUNAS: Record<ReportType, ColumnDef<ReportRow, unknown>[]> = {
       id: "invoiceIssueDate",
       header: "Emissão NF",
       enableSorting: false,
+      meta: { hideBelow: "2xl" },
       cell: ({ row }) =>
         row.original.invoiceIssueDate ? formatDate(row.original.invoiceIssueDate) : "—",
     },
@@ -183,9 +193,9 @@ const COLUNAS: Record<ReportType, ColumnDef<ReportRow, unknown>[]> = {
       enableSorting: false,
       cell: ({ row }) => {
         if (!row.original.invoiceAmount) return "—";
-        const diff = Number(row.original.invoiceAmount) - Number(row.original.totalAmount);
+        const diff = new Decimal(row.original.invoiceAmount).minus(row.original.totalAmount);
         return (
-          <span className={cn(diff !== 0 && "font-medium text-status-amber")}>
+          <span className={cn(!diff.isZero() && "font-medium text-status-amber")}>
             {formatCurrency(diff.toFixed(2))}
           </span>
         );
@@ -194,36 +204,32 @@ const COLUNAS: Record<ReportType, ColumnDef<ReportRow, unknown>[]> = {
   ],
 };
 
-/** Quantas colunas antes das colunas monetarias (para o rodape de totais). */
+/** Rodape de totais alinhado coluna a coluna (respeita as colunas ocultas em telas estreitas). */
 function rodape(tipo: ReportType, t: ReportResult["totais"]) {
-  if (tipo === "medicoes") {
-    return (
-      <TableRow>
-        <TableCell colSpan={5}>Totais ({t.quantidade})</TableCell>
-        <TableCell className="text-right tabular">{formatCurrency(t.laborTotal)}</TableCell>
-        <TableCell className="text-right tabular">{formatCurrency(t.equipmentTotal)}</TableCell>
-        <TableCell className="text-right tabular">{formatCurrency(t.totalAmount)}</TableCell>
-      </TableRow>
-    );
-  }
-  if (tipo === "financeiro") {
-    return (
-      <TableRow>
-        <TableCell colSpan={4}>Totais ({t.quantidade})</TableCell>
-        <TableCell className="text-right tabular">{formatCurrency(t.totalAmount)}</TableCell>
-        <TableCell colSpan={2} />
-        <TableCell className="text-right tabular">{formatCurrency(t.invoiceAmount)}</TableCell>
-      </TableRow>
-    );
-  }
-  const diff = Number(t.invoiceAmount) - Number(t.totalAmount);
+  const diff = new Decimal(t.invoiceAmount).minus(t.totalAmount);
+  const valores: Record<string, string> = {
+    laborTotal: formatCurrency(t.laborTotal),
+    equipmentTotal: formatCurrency(t.equipmentTotal),
+    totalAmount: formatCurrency(t.totalAmount),
+    invoiceAmount: formatCurrency(t.invoiceAmount),
+    diff: formatCurrency(diff.toFixed(2)),
+  };
   return (
     <TableRow>
-      <TableCell colSpan={4}>Totais ({t.quantidade})</TableCell>
-      <TableCell className="text-right tabular">{formatCurrency(t.totalAmount)}</TableCell>
-      <TableCell colSpan={3} />
-      <TableCell className="text-right tabular">{formatCurrency(t.invoiceAmount)}</TableCell>
-      <TableCell className="text-right tabular">{formatCurrency(diff.toFixed(2))}</TableCell>
+      {COLUNAS[tipo].map((c, i) => {
+        const meta = c.meta as ColumnMeta | undefined;
+        return (
+          <TableCell
+            key={c.id}
+            className={cn(
+              meta?.align === "right" && "text-right tabular",
+              HIDE_BELOW[meta?.hideBelow ?? "none"],
+            )}
+          >
+            {i === 0 ? `Totais (${t.quantidade})` : (valores[c.id ?? ""] ?? "")}
+          </TableCell>
+        );
+      })}
     </TableRow>
   );
 }

@@ -60,17 +60,25 @@ const columns: ColumnDef<MedicaoRow, unknown>[] = [
   {
     id: "issueDate",
     header: "Período",
+    meta: { hideBelow: "2xl" },
     cell: ({ row }) => (
       <span className="tabular whitespace-nowrap text-xs">
         {formatDate(row.original.startDate)} – {formatDate(row.original.endDate)}
       </span>
     ),
   },
-  { id: "frs", header: "FRS", enableSorting: false, cell: ({ row }) => row.original.frs ?? "—" },
+  {
+    id: "frs",
+    header: "FRS",
+    enableSorting: false,
+    meta: { hideBelow: "lg" },
+    cell: ({ row }) => row.original.frs ?? "—",
+  },
   {
     id: "purchaseOrder",
     header: "PC",
     enableSorting: false,
+    meta: { hideBelow: "lg" },
     cell: ({ row }) => row.original.purchaseOrder ?? "—",
   },
   {
@@ -87,6 +95,7 @@ const columns: ColumnDef<MedicaoRow, unknown>[] = [
   {
     id: "updatedAt",
     header: "Atualizado",
+    meta: { hideBelow: "2xl" },
     cell: ({ row }) => (
       <span className="tabular text-xs text-muted-foreground">
         {formatTimestampAsDate(row.original.updatedAt)}
