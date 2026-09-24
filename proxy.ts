@@ -7,6 +7,9 @@ import { withAuth } from "next-auth/middleware";
  */
 export const proxy = withAuth({
   pages: { signIn: "/login" },
+  callbacks: {
+    authorized: ({ token }) => !!token && !token.invalid,
+  },
 });
 
 export const config = {
@@ -18,6 +21,7 @@ export const config = {
     "/faturamento/:path*",
     "/documentos/:path*",
     "/relatorios/:path*",
+    "/busca/:path*",
     "/configuracoes/:path*",
   ],
 };

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
-import { findUserByEmail } from "@/lib/db/repositories/user.repository";
+import { findUserByEmail, findUserById } from "@/lib/db/repositories/user.repository";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import type { SessionUser } from "@/lib/auth/rbac";
 import { audit } from "@/lib/services/audit.service";
@@ -57,6 +57,38 @@ export async function authenticate(
     role: user.role,
     clientId: user.clientId,
   };
+}
+
+const SESSION_CACHE_TTL_MS = 60_000;
+const sessionCacheHolder = globalThis as unknown as {
+  __bmSessionCache?: Map<string, { at: number; user: SessionUser | null }>;
+};
+const sessionCache = (sessionCacheHolder.__bmSessionCache ??= new Map());
+
+/**
+ * Estado atual do usuario para reconciliar o JWT: null quando inativo ou removido.
+ * Cache em memoria de 60 s por usuario (uma consulta por minuto, nao por requisicao).
+ */
+export async function resolveSessionUser(userId: string): Promise<SessionUser | null> {
+  const cached = sessionCache.get(userId);
+  const now = Date.now();
+  if (cached && now - cached.at < SESSION_CACHE_TTL_MS) return cached.user;
+  const u = await findUserById(prisma, userId);
+  const user: SessionUser | null =
+    u && u.isActive
+      ? { id: u.id, name: u.name, email: u.email, role: u.role, clientId: u.clientId }
+      : null;
+  sessionCache.set(userId, { at: now, user });
+  if (sessionCache.size > 10_000) {
+    for (const [k, v] of sessionCache)
+      if (now - v.at >= SESSION_CACHE_TTL_MS) sessionCache.delete(k);
+  }
+  return user;
+}
+
+/** Invalida o cache (chamar ao alterar papel, cliente ou situacao de um usuario). */
+export function invalidateSessionUser(userId: string): void {
+  sessionCache.delete(userId);
 }
 
 export function hashToken(token: string): string {

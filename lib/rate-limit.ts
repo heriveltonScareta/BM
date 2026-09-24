@@ -5,7 +5,10 @@ import { RateLimitError } from "@/lib/errors";
  * a interface permite trocar por Redis sem alterar os chamadores.
  */
 export interface RateLimiter {
+  /** Conta uma ocorrencia; lanca RateLimitError acima do limite. */
   consume(key: string): Promise<void>;
+  /** So verifica (sem contar): lanca RateLimitError se o limite ja foi atingido. */
+  check(key: string): Promise<void>;
 }
 
 interface Bucket {
@@ -28,6 +31,11 @@ export function createMemoryRateLimiter(options: { limit: number; windowMs: numb
       }
       bucket.count += 1;
       if (bucket.count > options.limit) throw new RateLimitError();
+    },
+    async check(key: string) {
+      const bucket = buckets.get(key);
+      if (bucket && bucket.resetAt > Date.now() && bucket.count >= options.limit)
+        throw new RateLimitError();
     },
   };
 }

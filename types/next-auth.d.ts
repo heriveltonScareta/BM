@@ -23,5 +23,7 @@ declare module "next-auth/jwt" {
     id?: string;
     role?: Role;
     clientId?: string | null;
+    /** Usuario inativo/removido depois do login: a sessao deixa de valer. */
+    invalid?: boolean;
   }
 }
