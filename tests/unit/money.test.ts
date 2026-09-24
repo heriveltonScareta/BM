@@ -52,3 +52,31 @@ describe("formatação pt-BR", () => {
     expect(formatQuantity("20")).toBe("20");
   });
 });
+
+describe("limites de escala e magnitude (fase 7)", async () => {
+  const { itemDecimalInput, positiveDecimalInput, nonNegativeDecimalInput } =
+    await import("@/lib/validation/money");
+  const { formatUnitPrice } = await import("@/lib/utils/format");
+  it("itens: até 4 casas e abaixo de 1e12", () => {
+    expect(itemDecimalInput.parse("1,0005")).toBe("1.0005");
+    expect(itemDecimalInput.safeParse("1,00005").success).toBe(false);
+    expect(itemDecimalInput.safeParse("1000000000000").success).toBe(false);
+    expect(itemDecimalInput.safeParse("-1").success).toBe(false);
+    // ruido binario de celula numerica e removido antes da validacao
+    expect(itemDecimalInput.parse(0.1 + 0.2)).toBe("0.3");
+  });
+  it("dinheiro: até 2 casas e abaixo de 1e14; positivo quando exigido", () => {
+    expect(nonNegativeDecimalInput.parse("0")).toBe("0");
+    expect(nonNegativeDecimalInput.safeParse("12,345").success).toBe(false);
+    expect(positiveDecimalInput.safeParse("0").success).toBe(false);
+    expect(positiveDecimalInput.safeParse("100000000000000").success).toBe(false);
+  });
+  it("formatCurrency é exato acima de 2^53 e formatUnitPrice mostra as casas gravadas", () => {
+    const plain = (s: string) => s.replace(/\u00a0/g, " ");
+    expect(plain(formatCurrency("9999999999999999.99"))).toBe("R$ 9.999.999.999.999.999,99");
+    expect(plain(formatCurrency("0.005"))).toBe("R$ 0,01");
+    expect(plain(formatUnitPrice("10.005"))).toBe("R$ 10,005");
+    expect(plain(formatUnitPrice("62.5"))).toBe("R$ 62,50");
+    expect(plain(formatUnitPrice("1.2345"))).toBe("R$ 1,2345");
+  });
+});

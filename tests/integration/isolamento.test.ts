@@ -35,6 +35,10 @@ import * as clienteRoute from "@/app/api/clientes/[id]/route";
 import * as clienteStatusRoute from "@/app/api/clientes/[id]/status/route";
 import * as contatosRoute from "@/app/api/clientes/[id]/contatos/route";
 import * as contratosRoute from "@/app/api/clientes/[id]/contratos/route";
+import * as contatoRoute from "@/app/api/clientes/[id]/contatos/[contatoId]/route";
+import * as contratoRoute from "@/app/api/clientes/[id]/contratos/[contratoId]/route";
+import * as clientesLista from "@/app/api/clientes/route";
+import * as selecaoRoute from "@/app/api/clientes/selecao/route";
 import * as listaMedicoes from "@/app/api/medicoes/route";
 import * as liberarRoute from "@/app/api/medicoes/[id]/liberar/route";
 import * as notaFiscalRoute from "@/app/api/medicoes/[id]/nota-fiscal/route";
@@ -376,6 +380,87 @@ describe("isolamento por cliente — Cliente A × recursos do Cliente B", () => 
       path: `/api/documentos?clientId=${b.client.id}`,
     });
     expect((docs.json as { total: number }).total).toBe(0);
+  });
+
+  it("Fase 7: CLIENTE não transita a própria medição por sessão; rotas de cadastro e criação negadas", async () => {
+    // medA esta APROVADO: pela tabela, "CLIENTE" poderia assinar — mas so pelo portal (token)
+    const own = await callRoute(statusRoute.POST, {
+      method: "POST",
+      path: "/x",
+      params: { id: medA },
+      body: { to: "ASSINADO" },
+    });
+    expect(own.status).toBe(403);
+    expect((await prisma.measurement.findUniqueOrThrow({ where: { id: medA } })).status).toBe(
+      S.APROVADO,
+    );
+    const contatoB = await prisma.clientContact.findFirstOrThrow({
+      where: { clientId: b.client.id },
+    });
+    const contratoB = b.contract;
+    const negadas = [
+      callRoute(contatoRoute.PATCH, {
+        method: "PATCH",
+        path: "/x",
+        params: { id: b.client.id, contatoId: contatoB.id },
+        body: { name: "x" },
+      }),
+      callRoute(contatoRoute.DELETE, {
+        method: "DELETE",
+        path: "/x",
+        params: { id: b.client.id, contatoId: contatoB.id },
+      }),
+      callRoute(contratoRoute.PATCH, {
+        method: "PATCH",
+        path: "/x",
+        params: { id: b.client.id, contratoId: contratoB.id },
+        body: { name: "x" },
+      }),
+      callRoute(clientesLista.GET, { path: "/api/clientes" }),
+      callRoute(selecaoRoute.GET, { path: "/api/clientes/selecao" }),
+      callRoute(listaMedicoes.POST, {
+        method: "POST",
+        path: "/api/medicoes",
+        body: {
+          clientId: b.client.id,
+          contractId: b.contract.id,
+          competence: "09/2026",
+          startDate: "2026-09-01",
+          endDate: "2026-09-30",
+          issueDate: "2026-09-30",
+        },
+      }),
+    ];
+    for (const r of await Promise.all(negadas)) expect(r.status).toBe(403);
+  });
+
+  it("FINANCEIRO não enxerga medição em elaboração (404), mesmo pelo id", async () => {
+    const users = await prisma.user.findMany();
+    const fin = users.find((u) => u.role === "FINANCEIRO")!;
+    asUser({ id: fin.id, name: fin.name, email: fin.email, role: fin.role, clientId: null });
+    const rascunho = await prisma.measurement.create({
+      data: {
+        number: "BM-2026-9999",
+        clientId: a.client.id,
+        contractId: a.contract.id,
+        competence: "2026-09",
+        startDate: new Date("2026-09-01T00:00:00Z"),
+        endDate: new Date("2026-09-30T00:00:00Z"),
+        issueDate: new Date("2026-09-30T00:00:00Z"),
+        ownerUserId: fin.id,
+        status: S.EM_ELABORACAO,
+      },
+    });
+    expect(
+      (await callRoute(medicaoRoute.GET, { path: "/x", params: { id: rascunho.id } })).status,
+    ).toBe(404);
+    expect(
+      (await callRoute(timelineRoute.GET, { path: "/x", params: { id: rascunho.id } })).status,
+    ).toBe(404);
+    expect((await callRoute(medicaoRoute.GET, { path: "/x", params: { id: medA } })).status).toBe(
+      200,
+    );
+    asUser(clienteA);
   });
 
   it("relatórios, busca e dashboard (Fase 6) não vazam registros de B", async () => {

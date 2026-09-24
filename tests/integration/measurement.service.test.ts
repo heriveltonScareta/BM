@@ -196,7 +196,7 @@ describe("measurement.service", () => {
         otherAmount: "100",
         discountAmount: "1.000,00",
         additionAmount: "50,5",
-        taxAmount: "12,345",
+        taxAmount: "12,35",
       }),
       actor,
     );

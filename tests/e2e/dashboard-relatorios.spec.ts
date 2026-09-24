@@ -106,7 +106,7 @@ test.describe("relatórios", () => {
     // soma da coluna Total (tbody) == rodape == card "Total do filtro" == soma dos cards por status
     const totaisLinhas = (await linhas.locator("td:nth-child(5)").allTextContents()).map(centavos);
     const somaLinhas = totaisLinhas.reduce((a, b) => a + b, 0);
-    const rodape = centavos(await tabela.locator("tfoot td").nth(1).innerText());
+    const rodape = centavos(await tabela.locator("tfoot td").nth(4).innerText());
     const totalFiltro = centavos(await page.getByTestId("total-filtro").innerText());
     const cards = (await page.getByTestId("card-valor").allTextContents()).map(centavos);
     const somaCards = cards.reduce((a, b) => a + b, 0);
