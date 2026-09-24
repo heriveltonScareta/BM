@@ -7,6 +7,7 @@ import {
   findClientBasic,
   findClientById,
   listClients,
+  listClientOptions,
   listClientsForSelection,
 } from "@/lib/db/repositories/client.repository";
 import type {
@@ -52,6 +53,11 @@ export async function getClient(scope: Scope, id: string) {
 
 export function getClientsForSelection(scope: Scope) {
   return listClientsForSelection(prisma, scope);
+}
+
+/** Opcoes leves (id e nome) para filtros de listagem. */
+export function getClientOptions(scope: Scope) {
+  return listClientOptions(prisma, scope);
 }
 
 export async function createClient(data: ClientData, actor: AuditActor) {

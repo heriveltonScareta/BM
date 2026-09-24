@@ -1,4 +1,4 @@
-import { withApi } from "@/lib/api/handler";
+import { bufferBody, withApi } from "@/lib/api/handler";
 import { requireAction, getScope } from "@/lib/auth/session";
 import { idSchema } from "@/lib/validation/common";
 import { getMeasurement } from "@/lib/services/measurement.service";
@@ -10,7 +10,7 @@ export const GET = withApi(async (_req, ctx) => {
   const { id } = await ctx.params;
   const m = toMeasurementDto(await getMeasurement(getScope(user), idSchema.parse(id)));
   const buffer = buildItemsWorkbook(m);
-  return new Response(new Uint8Array(buffer), {
+  return new Response(bufferBody(buffer), {
     headers: {
       "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "content-disposition": `attachment; filename="${m.number}-itens.xlsx"`,

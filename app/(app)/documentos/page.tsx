@@ -5,7 +5,7 @@ import { BuscaUrl, SelectUrl } from "@/components/tabelas/filtros";
 import { DocumentosTabela } from "@/components/documentos/documentos-tabela";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { listDocuments } from "@/lib/services/document.service";
-import { getClientsForSelection } from "@/lib/services/client.service";
+import { getClientOptions } from "@/lib/services/client.service";
 import { documentListQuerySchema, DOCUMENT_TYPE_LABELS } from "@/lib/validation/invoice";
 import { DocumentType } from "@/lib/db/generated/enums";
 
@@ -23,7 +23,7 @@ export default async function DocumentosPage({
   const query = parsed.success ? parsed.data : documentListQuerySchema.parse({});
   const [result, clientes] = await Promise.all([
     listDocuments(scope, query),
-    user.role === "CLIENTE" ? Promise.resolve([]) : getClientsForSelection(scope),
+    user.role === "CLIENTE" ? Promise.resolve([]) : getClientOptions(scope),
   ]);
 
   return (

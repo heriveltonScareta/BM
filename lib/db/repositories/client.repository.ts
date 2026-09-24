@@ -73,6 +73,15 @@ export function findClientBasic(db: Db, scope: Scope, id: string) {
   return db.client.findFirst({ where: { AND: [{ id }, clientScopeWhere(scope)] } });
 }
 
+/** Opcoes leves (id e nome) para filtros de listagem. */
+export function listClientOptions(db: Db, scope: Scope) {
+  return db.client.findMany({
+    where: { ...clientScopeWhere(scope) },
+    select: { id: true, code: true, tradeName: true },
+    orderBy: { tradeName: "asc" },
+  });
+}
+
 /** Clientes ativos com contratos ativos e aprovadores, para o formulario de medicao. */
 export function listClientsForSelection(db: Db, scope: Scope) {
   return db.client.findMany({

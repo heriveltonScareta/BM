@@ -1,7 +1,13 @@
-import { withApi, parseQuery } from "@/lib/api/handler";
+import { bufferBody, withApi, parseQuery } from "@/lib/api/handler";
 import { requireAction, getScope } from "@/lib/auth/session";
 import { exportFormatSchema, reportFiltersSchema } from "@/lib/validation/report";
-import { assertReportAllowed, getReport } from "@/lib/services/report.service";
+import {
+  assertReportAllowed,
+  EXPORT_MAX_ROWS,
+  EXPORT_PDF_MAX_ROWS,
+  getReport,
+} from "@/lib/services/report.service";
+import { ValidationError } from "@/lib/errors";
 import { buildReportWorkbook } from "@/lib/excel/relatorio";
 import { renderRelatorioPdf } from "@/lib/pdf/relatorio";
 import { describeFilters } from "@/lib/services/report-filters";
@@ -14,11 +20,19 @@ export const GET = withApi(async (req) => {
   );
   assertReportAllowed(user, f.tipo);
   const r = await getReport(getScope(user), f, { all: true });
-  const filtros = await describeFilters(f);
+  if (f.formato === "pdf" && r.total > EXPORT_PDF_MAX_ROWS)
+    throw new ValidationError(
+      `O PDF comporta até ${EXPORT_PDF_MAX_ROWS} medições; refine os filtros ou exporte em Excel.`,
+    );
+  if (r.total > EXPORT_MAX_ROWS)
+    throw new ValidationError(
+      `A exportação comporta até ${EXPORT_MAX_ROWS} medições; refine os filtros.`,
+    );
+  const filtros = await describeFilters(getScope(user), f);
   const slug = `relatorio-${f.tipo}-${new Date().toISOString().slice(0, 10)}`;
   if (f.formato === "pdf") {
     const pdf = await renderRelatorioPdf(f.tipo, r, filtros);
-    return new Response(new Uint8Array(pdf), {
+    return new Response(bufferBody(pdf), {
       headers: {
         "content-type": "application/pdf",
         "content-disposition": `attachment; filename="${slug}.pdf"`,
@@ -27,7 +41,7 @@ export const GET = withApi(async (req) => {
     });
   }
   const xlsx = buildReportWorkbook(f.tipo, r, filtros);
-  return new Response(new Uint8Array(xlsx), {
+  return new Response(bufferBody(xlsx), {
     headers: {
       "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "content-disposition": `attachment; filename="${slug}.xlsx"`,

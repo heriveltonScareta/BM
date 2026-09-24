@@ -12,7 +12,12 @@ function createClient(): PrismaClient {
   if (!connectionString) {
     throw new Error("DATABASE_URL não definida.");
   }
-  const adapter = new PrismaPg({ connectionString });
+  // pool explicito: cada transacao interativa segura uma conexao (DATABASE_POOL_MAX, padrao 10)
+  const max = Number(process.env.DATABASE_POOL_MAX ?? "10");
+  const adapter = new PrismaPg({
+    connectionString,
+    max: Number.isFinite(max) && max > 0 ? max : 10,
+  });
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],

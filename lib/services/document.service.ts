@@ -70,6 +70,11 @@ export async function listMeasurementDocuments(scope: Scope, measurementId: stri
   // 404 quando a medicao nao esta no escopo (nunca uma lista vazia com 200)
   const m = await findMeasurementBasic(prisma, scope, measurementId);
   if (!m) throw new NotFoundError("Medição não encontrada.");
+  return measurementDocumentsFor(scope, measurementId);
+}
+
+/** Variante para quem ja verificou que a medicao esta no escopo. */
+export function measurementDocumentsFor(scope: Scope, measurementId: string) {
   return prisma.document.findMany({
     where: { AND: [{ measurementId }, documentScopeWhere(scope)] },
     orderBy: { createdAt: "desc" },

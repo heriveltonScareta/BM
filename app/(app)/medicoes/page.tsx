@@ -9,7 +9,7 @@ import { MedicoesTabela } from "@/components/medicao/medicoes-tabela";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { getMeasurements } from "@/lib/services/measurement.service";
 import { toMeasurementListRow } from "@/lib/services/measurement-dto";
-import { getClientsForSelection } from "@/lib/services/client.service";
+import { getClientOptions } from "@/lib/services/client.service";
 import { measurementListQuerySchema } from "@/lib/validation/measurement";
 import { ALL_STATUSES, STATUS_LABELS } from "@/lib/services/status-machine";
 
@@ -27,7 +27,7 @@ export default async function MedicoesPage({
   const query = parsed.success ? parsed.data : measurementListQuerySchema.parse({});
   const [result, clientes] = await Promise.all([
     getMeasurements(scope, query),
-    user.role === "CLIENTE" ? Promise.resolve([]) : getClientsForSelection(scope),
+    user.role === "CLIENTE" ? Promise.resolve([]) : getClientOptions(scope),
   ]);
   const podeCriar = can(user, "medicao:criar");
 

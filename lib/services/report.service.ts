@@ -10,6 +10,7 @@ import type { ReportFilters } from "@/lib/validation/report";
 import { ALL_STATUSES, STATUS_LABELS } from "@/lib/services/status-machine";
 import { round2 } from "@/lib/services/calculation";
 import { dateToDateOnly } from "@/lib/utils/dates";
+import { actorLabelWithoutEmail } from "@/lib/services/measurement.service";
 
 const sum = (values: Array<Decimal.Value | null | undefined>) =>
   values.reduce<Decimal>((acc, v) => acc.plus(v ?? 0), new Decimal(0));
@@ -113,33 +114,46 @@ export async function getDashboard(
   });
   const clienteNome = new Map(clientes.map((c) => [c.id, c.tradeName]));
 
-  // pendencias
+  // pendencias (listas limitadas a 20; as contagens dos cards vem de count/groupBy, nunca das listas)
   const now = new Date();
-  const [correcoes, aguardandoEnvio, enviadas, invoices] = await Promise.all([
+  const listSelect = { id: true, number: true, client: { select: { tradeName: true } } } as const;
+  // link expirado sem decisao: ha solicitacao, e nenhuma ainda vigente
+  const expiradasWhere: Prisma.MeasurementWhereInput = {
+    AND: [
+      base,
+      { status: { in: [S.ENVIADO_AO_CLIENTE, S.EM_APROVACAO, S.APROVADO] } },
+      { approvalRequests: { some: {} } },
+      { approvalRequests: { none: { expiresAt: { gt: now } } } },
+    ],
+  };
+  const [correcoes, aguardandoEnvio, expiradas, linksExpirados, invoices] = await Promise.all([
     prisma.measurement.findMany({
       where: { AND: [base, { status: S.CORRECAO_SOLICITADA }] },
-      select: { id: true, number: true, client: { select: { tradeName: true } } },
+      select: listSelect,
+      orderBy: { updatedAt: "desc" },
       take: 20,
     }),
     prisma.measurement.findMany({
       where: { AND: [base, { status: S.AGUARDANDO_ENVIO }] },
-      select: { id: true, number: true, client: { select: { tradeName: true } } },
+      select: listSelect,
+      orderBy: { updatedAt: "desc" },
       take: 20,
     }),
     prisma.measurement.findMany({
-      where: {
-        AND: [base, { status: { in: [S.ENVIADO_AO_CLIENTE, S.EM_APROVACAO, S.APROVADO] } }],
-      },
-      select: {
-        id: true,
-        number: true,
-        client: { select: { tradeName: true } },
-        approvalRequests: { orderBy: { sentAt: "desc" }, take: 1, select: { expiresAt: true } },
-      },
-      take: 50,
+      where: expiradasWhere,
+      select: listSelect,
+      orderBy: { updatedAt: "desc" },
+      take: 20,
     }),
+    prisma.measurement.count({ where: expiradasWhere }),
+    // NF divergente: comparacao Decimal no servidor; so NFs vigentes de medicoes nao canceladas
     prisma.invoice.findMany({
-      where: { measurement: base },
+      where: {
+        AND: [
+          { status: { not: "CANCELADA" } },
+          { measurement: { AND: [base, { status: { not: S.CANCELADO } }] } },
+        ],
+      },
       select: {
         amount: true,
         number: true,
@@ -148,7 +162,6 @@ export async function getDashboard(
             id: true,
             number: true,
             totalAmount: true,
-            status: true,
             client: { select: { tradeName: true } },
           },
         },
@@ -164,9 +177,6 @@ export async function getDashboard(
       tipo: "CORRECAO",
       descricao: "Cliente solicitou correção",
     });
-  const expiradas = enviadas.filter(
-    (m) => m.approvalRequests[0] && m.approvalRequests[0].expiresAt <= now,
-  );
   for (const m of expiradas)
     pendencias.push({
       id: m.id,
@@ -176,11 +186,9 @@ export async function getDashboard(
       descricao: "Link de aprovação expirado sem decisão",
     });
   const divergentes = invoices.filter(
-    (i) =>
-      i.measurement.status !== S.CANCELADO &&
-      !new Decimal(i.amount.toString()).eq(new Decimal(i.measurement.totalAmount.toString())),
+    (i) => !new Decimal(i.amount.toString()).eq(new Decimal(i.measurement.totalAmount.toString())),
   );
-  for (const i of divergentes)
+  for (const i of divergentes.slice(0, 20))
     pendencias.push({
       id: i.measurement.id,
       number: i.measurement.number,
@@ -197,62 +205,29 @@ export async function getDashboard(
       descricao: "Pronta para envio ao cliente",
     });
 
-  // atividade recente (somente medicoes do escopo)
-  const scoped = await prisma.measurement.findMany({
-    where: base,
-    select: { id: true, number: true },
-    take: 500,
+  // atividade recente: consulta indexada por AuditLog.measurementId, filtrada pelo escopo no banco
+  const atividadeRaw = await prisma.auditLog.findMany({
+    where: { measurement: base },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      action: true,
+      actorLabel: true,
+      createdAt: true,
+      measurementId: true,
+      measurement: { select: { number: true } },
+    },
   });
-  const idSet = new Map(scoped.map((m) => [m.id, m.number]));
-  // ultimos eventos: da medicao (entityId) ou de entidades filhas (after.measurementId), filtrados pelo escopo
-  const atividadeRaw = scoped.length
-    ? await prisma.auditLog.findMany({
-        where: {
-          OR: [
-            { entity: "Measurement", entityId: { in: [...idSet.keys()] } },
-            {
-              entity: {
-                in: [
-                  "Invoice",
-                  "Signature",
-                  "MeasurementVersion",
-                  "Document",
-                  "LaborItem",
-                  "EquipmentItem",
-                ],
-              },
-            },
-          ],
-        },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-        select: {
-          id: true,
-          action: true,
-          actorLabel: true,
-          createdAt: true,
-          entity: true,
-          entityId: true,
-          after: true,
-          before: true,
-        },
-      })
-    : [];
-  const atividade = atividadeRaw
-    .map((a) => {
-      const payload = (a.after ?? a.before) as { measurementId?: string } | null;
-      const mid = a.entity === "Measurement" ? a.entityId : (payload?.measurementId ?? null);
-      return {
-        id: a.id,
-        action: a.action,
-        actorLabel: a.actorLabel,
-        createdAt: a.createdAt,
-        measurementId: mid,
-        number: mid ? (idSet.get(mid) ?? null) : null,
-      };
-    })
-    .filter((a) => a.measurementId && idSet.has(a.measurementId))
-    .slice(0, 10);
+  const atividade = atividadeRaw.map((a) => ({
+    id: a.id,
+    action: a.action,
+    // o cliente nao ve o e-mail dos usuarios internos
+    actorLabel: scope.kind === "CLIENT" ? actorLabelWithoutEmail(a.actorLabel) : a.actorLabel,
+    createdAt: a.createdAt,
+    measurementId: a.measurementId,
+    number: a.measurement?.number ?? null,
+  }));
 
   return {
     competences: competencesRows,
@@ -262,8 +237,8 @@ export async function getDashboard(
       aguardandoCliente: card(AGUARDANDO_CLIENTE),
       aprovadasNaoFaturadas: card(APROVADAS_NAO_FATURADAS),
       faturadas: card([S.FATURADO]),
-      correcaoSolicitada: correcoes.length,
-      linksExpirados: expiradas.length,
+      correcaoSolicitada: byStatus.get(S.CORRECAO_SOLICITADA)?.quantidade ?? 0,
+      linksExpirados,
       nfDivergente: divergentes.length,
     },
     faturadoPorCompetencia: faturadoRows.slice(-6).map((r) => ({
@@ -327,6 +302,10 @@ export interface ReportResult {
   porCompetencia: Array<{ competence: string; quantidade: number; valor: string }>;
 }
 
+/** Limites das exportacoes (o total do rodape sempre cobre o conjunto inteiro). */
+export const EXPORT_MAX_ROWS = 5000;
+export const EXPORT_PDF_MAX_ROWS = 1000;
+
 function reportWhere(scope: Scope, f: ReportFilters): Prisma.MeasurementWhereInput {
   const and: Prisma.MeasurementWhereInput[] = [measurementScopeWhere(scope)];
   if (f.de) and.push({ competence: { gte: f.de } });
@@ -361,7 +340,7 @@ export async function getReport(
       where,
       orderBy,
       skip: options.all ? undefined : (f.page - 1) * f.pageSize,
-      take: options.all ? 5000 : f.pageSize,
+      take: options.all ? EXPORT_MAX_ROWS : f.pageSize,
       select: {
         id: true,
         number: true,
@@ -633,10 +612,9 @@ export function isFinanceiroRole(role: Role): boolean {
 
 /** Competencias existentes no escopo (mais recente primeiro), para filtros. */
 export async function listCompetences(scope: Scope): Promise<string[]> {
-  const rows = await prisma.measurement.findMany({
+  const rows = await prisma.measurement.groupBy({
+    by: ["competence"],
     where: measurementScopeWhere(scope),
-    select: { competence: true },
-    distinct: ["competence"],
     orderBy: { competence: "desc" },
   });
   return rows.map((r) => r.competence);

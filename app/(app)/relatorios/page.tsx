@@ -4,7 +4,7 @@ import { EstadoSemPermissao } from "@/components/estados";
 import { RelatorioView } from "@/components/relatorios/relatorio-view";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { getReport, listCompetences } from "@/lib/services/report.service";
-import { getClientsForSelection } from "@/lib/services/client.service";
+import { getClientOptions } from "@/lib/services/client.service";
 import { reportFiltersSchema, REPORT_TYPES, type ReportType } from "@/lib/validation/report";
 
 export const metadata: Metadata = { title: "Relatórios" };
@@ -30,7 +30,7 @@ export default async function RelatoriosPage({
   const [resultado, competences, clientes] = await Promise.all([
     getReport(scope, f),
     listCompetences(scope),
-    getClientsForSelection(scope),
+    getClientOptions(scope),
   ]);
 
   return (

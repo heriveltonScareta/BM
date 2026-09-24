@@ -9,14 +9,10 @@ import { StatusBadge } from "@/components/medicao/status-badge";
 import { MedicaoAcoes } from "@/components/medicao/medicao-acoes";
 import { MedicaoWorkspace } from "@/components/medicao/medicao-workspace";
 import { can, getScope, requireSession } from "@/lib/auth/session";
-import { getMeasurement, getMeasurementTimeline } from "@/lib/services/measurement.service";
-import { getApprovalStatus, listVersions } from "@/lib/services/approval.service";
-import { getBillingInfo } from "@/lib/services/billing.service";
-import { listMeasurementDocuments } from "@/lib/services/document.service";
+import { getMeasurementWorkspace } from "@/lib/services/measurement-page";
 import { AprovacaoBanner } from "@/components/medicao/aprovacao-banner";
 import { toMeasurementDto } from "@/lib/services/measurement-dto";
-import { getClient } from "@/lib/services/client.service";
-import { allowedTransitions, isEditable } from "@/lib/services/status-machine";
+import { allowedTransitions } from "@/lib/services/status-machine";
 import { NotFoundError } from "@/lib/errors";
 import { idSchema } from "@/lib/validation/common";
 import { competenceLabel, formatDate } from "@/lib/utils/dates";
@@ -30,31 +26,17 @@ export default async function MedicaoPage({ params }: { params: Promise<{ id: st
   if (!idSchema.safeParse(id).success) notFound();
   const scope = getScope(user);
 
-  let detail;
-  let timeline;
-  let aprovacao;
-  let versoes;
-  let faturamento;
-  let documentos;
+  let ws;
   try {
-    [detail, timeline, aprovacao, versoes, faturamento, documentos] = await Promise.all([
-      getMeasurement(scope, id),
-      getMeasurementTimeline(scope, id),
-      getApprovalStatus(scope, id),
-      listVersions(scope, id),
-      getBillingInfo(scope, id),
-      listMeasurementDocuments(scope, id),
-    ]);
+    ws = await getMeasurementWorkspace(user, scope, id);
   } catch (e) {
     if (e instanceof NotFoundError) notFound();
     throw e;
   }
+  const { detail, editable, podeEnviar, timeline, aprovacao, versoes, faturamento, documentos } =
+    ws;
+  const cliente = ws.cliente;
   const medicao = toMeasurementDto(detail);
-  const editable =
-    can(user, "medicao:editar", { clientId: medicao.client.id, status: medicao.status }) &&
-    isEditable(medicao.status);
-  const podeEnviar = can(user, "medicao:enviar");
-  const cliente = editable || podeEnviar ? await getClient(scope, medicao.client.id) : null;
   const contratos =
     editable && cliente
       ? cliente.contracts

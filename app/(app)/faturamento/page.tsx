@@ -6,7 +6,7 @@ import { MedicoesTabela } from "@/components/medicao/medicoes-tabela";
 import { can, getScope, requireSession } from "@/lib/auth/session";
 import { getMeasurements } from "@/lib/services/measurement.service";
 import { toMeasurementListRow } from "@/lib/services/measurement-dto";
-import { getClientsForSelection } from "@/lib/services/client.service";
+import { getClientOptions } from "@/lib/services/client.service";
 import { measurementListQuerySchema } from "@/lib/validation/measurement";
 import { MeasurementStatus as S } from "@/lib/db/generated/enums";
 import { STATUS_LABELS } from "@/lib/services/status-machine";
@@ -29,7 +29,7 @@ export default async function FaturamentoPage({
   const status = query.status && FILA.includes(query.status) ? query.status : undefined;
   const [result, clientes] = await Promise.all([
     getMeasurements(scope, { ...query, status, statuses: status ? undefined : FILA }),
-    getClientsForSelection(scope),
+    getClientOptions(scope),
   ]);
 
   return (

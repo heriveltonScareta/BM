@@ -1,4 +1,4 @@
-import { withApi } from "@/lib/api/handler";
+import { bufferBody, withApi } from "@/lib/api/handler";
 import { requireAction, getScope } from "@/lib/auth/session";
 import { idSchema } from "@/lib/validation/common";
 import { getDocumentForDownload } from "@/lib/services/document.service";
@@ -10,7 +10,8 @@ export const GET = withApi(async (req, ctx) => {
   const { doc, data } = await getDocumentForDownload(getScope(user), idSchema.parse(id));
   const inline =
     new URL(req.url).searchParams.get("inline") === "1" && doc.mimeType === "application/pdf";
-  return new Response(new Uint8Array(data), {
+  // view sobre o Buffer (sem copiar o arquivo uma segunda vez)
+  return new Response(bufferBody(data), {
     headers: {
       "content-type": doc.mimeType,
       "content-length": String(data.byteLength),
