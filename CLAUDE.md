@@ -41,7 +41,8 @@ lib/services    regras de negócio: status-machine, calculation, audit, measurem
                 approval (envio, portal por token, decisão, assinatura, versões), document (upload,
                 download por escopo, listagem), billing (liberar, NF, faturar), upload-validation,
                 report (dashboard, relatórios com totais do conjunto filtrado, busca global, resumo
-                do cliente), report-filters (texto dos filtros nas exportações)
+                do cliente), report-filters (texto dos filtros nas exportações), measurement-page
+                (tudo que a página da medição precisa, com uma verificação de escopo)
 lib/validation  schemas Zod compartilhados (cnpj, money, common, auth, client, measurement, locale)
 lib/email       adapter (dev grava em /tmp/bm-emails; smtp por env)
 lib/pdf         boletim.tsx (react-pdf), data.ts (BoletimData a partir da medição ou de um snapshot),
@@ -92,7 +93,20 @@ prisma/         schema, migrations, seed.mts      tests/  unit, integration, e2e
   Competência armazenada `AAAA-MM`, exibida `MM/AAAA`.
 - **TypeScript:** `any` proibido (`eslint-disable` só com justificativa). `noUncheckedIndexedAccess` ligado.
 - **Estados de tela:** usar `components/estados` (carregando, vazio, erro, sem permissão).
-- **Documentos permitidos:** `README.md`, `CLAUDE.md`, `DECISOES.md`, `PLANO.md`, relatório da Fase 7.
+- **Transições concorrentes:** gravar status sempre por compare-and-set (`updateMany` com o status
+  lido, `count !== 1` ⇒ `ConflictError`); guards dentro da transação. O envio exige também
+  `currentVersion` e `updatedAt` iguais aos lidos (snapshot = itens gravados).
+- **Rota genérica de status:** só atores de sessão; papel CLIENTE ⇒ 403; destinos com fluxo próprio
+  (envio, portal, NF) ⇒ 409. Aprovar/assinar só pelo portal; NF só por `attachInvoice`.
+- **Timeline/atividade:** fora de `auditoria:ver`, sem IP, sem id do ator e `before/after` só com os
+  campos da lista branca (`timelineFor`); CLIENTE não vê e-mails internos.
+- **Limites numéricos:** itens até 4 casas e < 1e12 (`itemDecimalInput`); dinheiro até 2 casas e
+  < 1e14. Preço unitário exibido com `formatUnitPrice` (2 a 4 casas). Total negativo é recusado.
+- **Auditoria de medição:** `AuditLog.measurementId` é preenchido só por `audit()` (derivado de
+  `entityId` ou de `before/after.measurementId`); timeline e atividade consultam por ele.
+- **Tabelas largas:** coluna secundária recebe `meta.hideBelow` (`lg`/`xl`/`2xl`); rodapé de totais
+  é montado coluna a coluna. Nunca deixar uma tela rolar horizontalmente em 1440 px.
+- **Documentos permitidos:** `README.md`, `CLAUDE.md`, `DECISOES.md`, `PLANO.md`, `RELATORIO-FASE-7.md`.
 - **Sem dados mockados no front:** toda tela consome a API real. Único dado fabricado: seed.
 
 ## Inegociáveis — máquina de estados (Seção 5 do briefing)

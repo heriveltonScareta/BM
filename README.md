@@ -4,8 +4,9 @@ Sistema web para uma prestadora de serviços (mineração, construção pesada e
 o ciclo **prestação → medição → aprovação do cliente → assinatura → liberação → nota fiscal →
 arquivamento**, substituindo planilhas e e-mails soltos.
 
-Estado atual: **Fases 0 a 6** concluídas (fundação, clientes, medição, Excel/PDF, aprovação e
-assinatura, faturamento e documentos, dashboard, relatórios e busca global). Veja `PLANO.md` para as fases e `DECISOES.md` para
+Estado atual: **Fases 0 a 7** concluídas (fundação, clientes, medição, Excel/PDF, aprovação e
+assinatura, faturamento e documentos, dashboard, relatórios e busca global, revisão final —
+ver `RELATORIO-FASE-7.md`). Veja `PLANO.md` para as fases e `DECISOES.md` para
 as decisões técnicas.
 
 ## Como rodar em 5 passos
@@ -53,6 +54,7 @@ ficam em `./storage` (fora de `/public`; gitignored).
 | ------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------- |
 | `DATABASE_URL`                                    | `postgresql://postgres:postgres@localhost:5432/bm` | Banco principal                                                             |
 | `TEST_DATABASE_URL`                               | `...localhost:5432/bm_test`                        | Banco dos testes de integração                                              |
+| `DATABASE_POOL_MAX`                               | `10`                                               | Conexões do pool do Postgres                                                |
 | `NEXTAUTH_SECRET`                                 | —                                                  | Segredo do JWT de sessão (obrigatório)                                      |
 | `NEXTAUTH_URL` / `APP_URL`                        | `http://localhost:3000`                            | URL pública da aplicação                                                    |
 | `SESSION_MAX_AGE`                                 | `28800`                                            | Duração da sessão em segundos (8 h)                                         |
@@ -95,7 +97,10 @@ Consulte `CLAUDE.md` (estrutura de pastas, convenções e regras de negócio ine
 - Configurações é somente leitura: dados da prestadora vêm das variáveis `COMPANY_*`; não há tela
   de gestão de usuários (os quatro perfis vêm do seed) nem visualização geral da auditoria (o
   histórico de cada medição está na aba Histórico; o dashboard mostra a atividade recente).
-- Exportação de relatórios limitada a 5.000 linhas por arquivo.
+- Exportação de relatórios limitada a 5.000 linhas (Excel) e 1.000 (PDF) por arquivo.
+- O IP das requisições vem de `x-forwarded-for`: em produção, coloque um proxy reverso confiável à
+  frente (sem ele o cabeçalho pode ser forjado; por isso login e recuperação de senha também limitam
+  por e-mail).
 - Assinatura é **eletrônica simples com registro de evidências** (MP 2.200-2/2001, art. 10, §2º),
   não assinatura digital ICP-Brasil.
 - Fora de escopo do MVP: ERP/SEFAZ, leitura automática do XML da NF-e, app nativo, push, multi-idioma,
