@@ -15,9 +15,32 @@ function toNumber(value: DecimalLike | null | undefined): number {
   return new Decimal(value.toString()).toNumber();
 }
 
+/**
+ * Representacao decimal exata para o Intl (aceita string numerica; evita o double e mantem
+ * os centavos mesmo acima de 2^53).
+ */
+function toExact(value: DecimalLike | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return value;
+  const d = new Decimal(value.toString());
+  return (d.isFinite() ? d.toFixed() : "0") as unknown as number;
+}
+
 /** R$ 1.234.567,89 */
 export function formatCurrency(value: DecimalLike | null | undefined): string {
-  return currencyFormatter.format(toNumber(value));
+  return currencyFormatter.format(toExact(value));
+}
+
+const unitPriceFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+/** Valor unitario com as casas realmente gravadas (2 a 4): R$ 10,005 nunca aparece como R$ 10,01. */
+export function formatUnitPrice(value: DecimalLike | null | undefined): string {
+  return unitPriceFormatter.format(toExact(value));
 }
 
 /** 1.234,56 (sem simbolo) */

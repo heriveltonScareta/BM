@@ -10,7 +10,8 @@ import "./locale";
 export function parseDecimalInput(input: string | number | null | undefined): Decimal | null {
   if (input === null || input === undefined) return null;
   if (typeof input === "number") {
-    return Number.isFinite(input) ? new Decimal(input) : null;
+    // celulas numericas de planilha chegam como double: remove o ruido binario (0.30000000000000004)
+    return Number.isFinite(input) ? new Decimal(input).toDecimalPlaces(6) : null;
   }
   let s = input.trim().replace(/\s/g, "").replace(/^R\$/i, "");
   if (s === "") return null;
@@ -65,12 +66,40 @@ export const decimalInput = z.union([z.string(), z.number()]).transform((v, ctx)
   return parsed.toFixed();
 });
 
-export const nonNegativeDecimalInput = decimalInput.refine(
-  (v) => new Decimal(v).gte(0),
-  "O valor não pode ser negativo.",
-);
+/** Limites de escala/magnitude alinhados as colunas Decimal(18,6) e Decimal(18,2) do banco. */
+export const DECIMAL_LIMITS = {
+  /** quantidade, dias/horas e valor unitario dos itens */
+  item: { maxDecimals: 4, max: "1000000000000" },
+  /** valores monetarios de cabecalho, totais e NF */
+  money: { maxDecimals: 2, max: "100000000000000" },
+} as const;
 
-export const positiveDecimalInput = decimalInput.refine(
-  (v) => new Decimal(v).gt(0),
-  "O valor deve ser maior que zero.",
-);
+export function decimalPlacesOf(value: string): number {
+  return new Decimal(value).decimalPlaces();
+}
+
+/** Schema com escala maxima e magnitude maxima: evita arredondamento silencioso e overflow no banco. */
+export function boundedDecimalInput(
+  limits: { maxDecimals: number; max: string },
+  options: { min?: "zero" | "positive" } = {},
+) {
+  return decimalInput.superRefine((v, ctx) => {
+    const d = new Decimal(v);
+    if (options.min === "zero" && d.lt(0))
+      ctx.addIssue({ code: "custom", message: "O valor não pode ser negativo." });
+    if (options.min === "positive" && d.lte(0))
+      ctx.addIssue({ code: "custom", message: "O valor deve ser maior que zero." });
+    if (d.decimalPlaces() > limits.maxDecimals)
+      ctx.addIssue({
+        code: "custom",
+        message: `Use no máximo ${limits.maxDecimals} casas decimais.`,
+      });
+    if (d.abs().gte(limits.max))
+      ctx.addIssue({ code: "custom", message: "Valor acima do limite permitido." });
+  });
+}
+
+export const nonNegativeDecimalInput = boundedDecimalInput(DECIMAL_LIMITS.money, { min: "zero" });
+export const positiveDecimalInput = boundedDecimalInput(DECIMAL_LIMITS.money, { min: "positive" });
+/** Campos numericos de item (ate 4 casas). */
+export const itemDecimalInput = boundedDecimalInput(DECIMAL_LIMITS.item, { min: "zero" });

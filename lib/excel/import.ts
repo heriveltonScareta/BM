@@ -15,7 +15,7 @@ import {
   SHEET_LABOR,
   normalizeName,
 } from "./columns";
-import { parseDecimalInput } from "@/lib/validation/money";
+import { DECIMAL_LIMITS, parseDecimalInput } from "@/lib/validation/money";
 import type { EquipmentItemData, LaborItemData } from "@/lib/validation/measurement";
 
 /** Erro estruturado exibido em tabela na tela (Secao 10). */
@@ -206,6 +206,26 @@ function parseSheet(
         coluna: col,
         valorRecebido: v,
         motivo: "O valor não pode ser negativo.",
+      });
+      return null;
+    }
+    if (parsed.decimalPlaces() > DECIMAL_LIMITS.item.maxDecimals) {
+      errors.push({
+        aba,
+        linha,
+        coluna: col,
+        valorRecebido: v,
+        motivo: `Use no máximo ${DECIMAL_LIMITS.item.maxDecimals} casas decimais.`,
+      });
+      return null;
+    }
+    if (parsed.gte(DECIMAL_LIMITS.item.max)) {
+      errors.push({
+        aba,
+        linha,
+        coluna: col,
+        valorRecebido: v,
+        motivo: "Valor acima do limite permitido.",
       });
       return null;
     }

@@ -2,7 +2,7 @@ import path from "node:path";
 import { Document, Font, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { BoletimData } from "./data";
 import type { SnapshotItem } from "@/lib/services/snapshot";
-import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatCurrency, formatQuantity, formatUnitPrice } from "@/lib/utils/format";
 import {
   formatCompetence,
   formatDate,
@@ -207,7 +207,7 @@ function ItemsTable({
             <Text style={[s.td, { width: W.unit }]}>{i.unit}</Text>
             <Text style={[s.td, s.right, { width: W.dh }]}>{formatQuantity(i.daysHours)}</Text>
             <Text style={[s.td, s.right, { width: W.price }]}>
-              {formatCurrency(i.unitPrice).replace("R$", "").trim()}
+              {formatUnitPrice(i.unitPrice).replace("R$", "").trim()}
             </Text>
             <Text style={[s.td, s.right, { width: W.total }]}>
               {formatCurrency(i.totalPrice).replace("R$", "").trim()}

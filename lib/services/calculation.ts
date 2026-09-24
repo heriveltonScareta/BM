@@ -5,6 +5,9 @@ import Decimal from "decimal.js";
  * Todo arredondamento e half-up a 2 casas e acontece aqui, no servidor.
  */
 const ROUNDING = Decimal.ROUND_HALF_UP;
+// 40 digitos significativos: o produto de dois Decimal(18,6) (ate 36 digitos) nunca e truncado
+// antes do arredondamento a 2 casas; o padrao (20) perderia centavos acima de 1e18.
+Decimal.set({ precision: 40, rounding: ROUNDING });
 
 export type DecimalInput = Decimal | string | number;
 

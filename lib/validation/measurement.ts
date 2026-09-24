@@ -2,7 +2,7 @@ import { z } from "zod";
 import "./locale";
 import { MeasurementStatus } from "@/lib/db/generated/enums";
 import { idSchema, dateOnlySchema } from "./common";
-import { nonNegativeDecimalInput } from "./money";
+import { nonNegativeDecimalInput, itemDecimalInput } from "./money";
 import { parseCompetence } from "@/lib/utils/dates";
 
 const optionalText = (max: number) =>
@@ -73,10 +73,10 @@ export type CreateMeasurementData = z.output<typeof createMeasurementSchema>;
 const itemBase = {
   code: z.string().trim().min(1, "Informe o código.").max(30, "Máximo de 30 caracteres."),
   description: optionalText(240),
-  quantity: nonNegativeDecimalInput,
+  quantity: itemDecimalInput,
   unit: z.string().trim().min(1, "Informe a unidade.").max(12, "Máximo de 12 caracteres."),
-  daysHours: nonNegativeDecimalInput.default("0"),
-  unitPrice: nonNegativeDecimalInput,
+  daysHours: itemDecimalInput.default("0"),
+  unitPrice: itemDecimalInput,
 };
 
 export const laborItemSchema = z.object({

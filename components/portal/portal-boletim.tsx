@@ -40,7 +40,7 @@ import {
 import type { PortalState } from "@/lib/services/approval.service";
 import type { MeasurementSnapshot, SnapshotItem } from "@/lib/services/snapshot";
 import { api, ApiClientError } from "@/lib/api/client";
-import { formatCurrency, formatQuantity } from "@/lib/utils/format";
+import { formatCurrency, formatQuantity, formatUnitPrice } from "@/lib/utils/format";
 import {
   formatCompetence,
   formatDate,
@@ -222,7 +222,7 @@ function TabelaItens({
                     {i.code} · {i.label}
                   </div>
                   <div className="text-muted-foreground">
-                    {formatQuantity(i.quantity)} {i.unit} × {formatCurrency(i.unitPrice)} ={" "}
+                    {formatQuantity(i.quantity)} {i.unit} × {formatUnitPrice(i.unitPrice)} ={" "}
                     <span className="tabular text-foreground">{formatCurrency(i.totalPrice)}</span>
                   </div>
                 </li>
@@ -258,7 +258,7 @@ function TabelaItens({
                         {formatQuantity(i.daysHours)}
                       </TableCell>
                       <TableCell className="py-1.5 text-right tabular">
-                        {formatCurrency(i.unitPrice)}
+                        {formatUnitPrice(i.unitPrice)}
                       </TableCell>
                       <TableCell className="py-1.5 text-right tabular">
                         {formatCurrency(i.totalPrice)}
