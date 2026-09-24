@@ -68,6 +68,18 @@ export interface AuditEntry {
   actor: AuditActor;
   before?: unknown;
   after?: unknown;
+  /** Medicao relacionada; se omitido, deriva de entityId (Measurement) ou de before/after. */
+  measurementId?: string | null;
+}
+
+function measurementIdOf(entry: AuditEntry): string | null {
+  if (entry.measurementId !== undefined) return entry.measurementId;
+  if (entry.entity === "Measurement") return entry.entityId;
+  for (const payload of [entry.after, entry.before]) {
+    const id = (payload as { measurementId?: unknown } | null | undefined)?.measurementId;
+    if (typeof id === "string") return id;
+  }
+  return null;
 }
 
 function toJson(value: unknown): Prisma.InputJsonValue | undefined {
@@ -88,6 +100,7 @@ export async function audit(db: Db, entry: AuditEntry): Promise<void> {
       after: toJson(entry.after),
       ip: entry.actor.ip ?? null,
       userAgent: entry.actor.userAgent ?? null,
+      measurementId: measurementIdOf(entry),
     },
   });
 }

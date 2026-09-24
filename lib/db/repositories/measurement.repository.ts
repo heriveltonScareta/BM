@@ -115,13 +115,7 @@ export function findItemsForTotals(db: Db, measurementId: string) {
 /** Trilha de auditoria da medicao e de tudo que a referencia (itens, versoes, NF, documentos...). */
 export function listMeasurementAudit(db: Db, measurementId: string) {
   return db.auditLog.findMany({
-    where: {
-      OR: [
-        { entity: "Measurement", entityId: measurementId },
-        { after: { path: ["measurementId"], equals: measurementId } },
-        { before: { path: ["measurementId"], equals: measurementId } },
-      ],
-    },
+    where: { measurementId },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 500,
     select: {

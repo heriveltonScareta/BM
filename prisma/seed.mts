@@ -803,7 +803,7 @@ async function main() {
               generatedAt: at,
             }),
           );
-          await seedDocument({
+          const signedDoc = await seedDocument({
             measurementId: measurement.id,
             clientId: client.id,
             type: "BOLETIM_ASSINADO",
@@ -811,6 +811,10 @@ async function main() {
             mimeType: "application/pdf",
             data: signedPdf,
             createdAt: at,
+          });
+          await prisma.signature.update({
+            where: { id: sig.id },
+            data: { signedDocumentId: signedDoc.id },
           });
         }
         actorUserId = null;

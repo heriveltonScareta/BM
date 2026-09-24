@@ -202,6 +202,7 @@ model Measurement {
   versions         MeasurementVersion[]
   approvalRequests ApprovalRequest[]
   signatures       Signature[]
+  auditLogs        AuditLog[]
   invoice          Invoice?
   documents        Document[]
 
@@ -211,6 +212,8 @@ model Measurement {
   @@index([purchaseOrder])
   @@index([status])
   @@index([competence])
+  @@index([updatedAt])
+  @@index([contractId])
 }
 
 model LaborItem {
@@ -310,11 +313,14 @@ model Signature {
   /// SHA-256 do PDF assinado
   documentHash      String
   signatureImage    String?
+  /// PDF assinado (com o bloco de evidencias) gerado por esta assinatura
+  signedDocumentId  String?  @unique
   createdAt         DateTime @default(now())
 
   measurement     Measurement        @relation(fields: [measurementId], references: [id])
   version         MeasurementVersion @relation(fields: [versionId], references: [id])
   approvalRequest ApprovalRequest    @relation(fields: [approvalRequestId], references: [id])
+  signedDocument  Document?          @relation("SignedBoletim", fields: [signedDocumentId], references: [id])
 
   @@index([measurementId])
 }
@@ -366,9 +372,11 @@ model Document {
   version     MeasurementVersion? @relation("VersionPdf")
   invoicePdf  Invoice?            @relation("InvoicePdf")
   invoiceXml  Invoice?            @relation("InvoiceXml")
+  signature   Signature?          @relation("SignedBoletim")
 
   @@index([measurementId])
   @@index([clientId])
+  @@index([measurementId, type])
 }
 
 // ---------------------------------------------------------------------------
@@ -376,21 +384,25 @@ model Document {
 // ---------------------------------------------------------------------------
 
 model AuditLog {
-  id          String   @id @default(uuid(7))
-  entity      String
-  entityId    String
-  action      String
-  actorUserId String?
-  actorLabel  String
-  before      Json?
-  after       Json?
-  ip          String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
+  id            String   @id @default(uuid(7))
+  entity        String
+  entityId      String
+  action        String
+  actorUserId   String?
+  actorLabel    String
+  before        Json?
+  after         Json?
+  ip            String?
+  userAgent     String?
+  /// Medicao a que o evento se refere (a propria ou a entidade filha), para timeline e dashboard
+  measurementId String?
+  createdAt     DateTime @default(now())
 
-  actor User? @relation(fields: [actorUserId], references: [id])
+  actor       User?        @relation(fields: [actorUserId], references: [id])
+  measurement Measurement? @relation(fields: [measurementId], references: [id])
 
   @@index([entity, entityId, createdAt])
   @@index([actorUserId])
   @@index([createdAt])
+  @@index([measurementId, createdAt])
 }
